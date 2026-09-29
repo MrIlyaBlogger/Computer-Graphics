@@ -80,19 +80,21 @@ target_sources(${PROJECT_NAME} PRIVATE
 	${imgui_SOURCE_DIR}/imgui_demo.cpp
 )
 
-# Compile shaders
-find_program(GLSLC_FOUND glslc)
-if(GLSLC_FOUND)
-	set(_SHADER_BINARIES)
+# Compile shaders; configuration fails if the compiler is unavailable.
+find_program(GLSLC_EXECUTABLE NAMES glslc REQUIRED)
+
+set(_SHADER_BINARIES)
+set(_SHADER_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders)
+file(MAKE_DIRECTORY ${_SHADER_OUTPUT_DIR})
 
 	macro(compile_shader SHADER_FILE)
-		set(SHADER_SOURCE ${CMAKE_SOURCE_DIR}/shaders/${SHADER_FILE})
+		set(SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/shaders/${SHADER_FILE})
 		set(SHADER_BINARY ${SHADER_FILE}.spv)
-		set(SHADER_BINARY_PATH ${CMAKE_SOURCE_DIR}/shaders/${SHADER_BINARY})
+		set(SHADER_BINARY_PATH ${_SHADER_OUTPUT_DIR}/${SHADER_BINARY})
 
 		add_custom_command(
 			OUTPUT ${SHADER_BINARY_PATH}
-			COMMAND glslc ${SHADER_SOURCE} -o ${SHADER_BINARY_PATH}
+			COMMAND ${GLSLC_EXECUTABLE} ${SHADER_SOURCE} -o ${SHADER_BINARY_PATH}
 			DEPENDS ${SHADER_SOURCE}
 			COMMENT "Compiling ${SHADER_FILE} shader"
 		)
@@ -108,4 +110,7 @@ if(GLSLC_FOUND)
 
 	add_custom_target(shaders DEPENDS ${_SHADER_BINARIES})
 	add_dependencies(${PROJECT_NAME} shaders)
-endif()
+
+	set_target_properties(${PROJECT_NAME} PROPERTIES
+		VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+)

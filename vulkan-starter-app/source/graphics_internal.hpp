@@ -15,33 +15,36 @@ struct GlobalUniforms {
 };
 
 struct Context {
-	VkPhysicalDevice physical_device;
-	VkDevice device;
+    VkPhysicalDevice physical_device;
+    VkDevice device;
 
-	VmaAllocator allocator;
+    VmaAllocator allocator;
 
-	VkQueue graphics_queue;
-	uint32_t graphics_queue_index;
+    VkQueue graphics_queue;
+    uint32_t graphics_queue_index;
 
-	VkFormat swapchain_format;
-	VkExtent2D swapchain_extent;
+    VkFormat swapchain_format;
+    VkExtent2D swapchain_extent;
 
-	VkRenderPass render_pass;
+    VkRenderPass render_pass;
 
-	VkPipelineLayout pipeline_layout;
-	VkPipeline graphics_pipeline;
+    VkPipelineLayout pipeline_layout;
+    VkPipeline graphics_pipeline;
 
-	VkBuffer vertex_buffer;
-	VmaAllocation index_buffer_allocation;
-	uint32_t index_count;
+    VkBuffer vertex_buffer;
+    VmaAllocation vertex_buffer_allocation;
 
-	VkBuffer uniform_buffer;
-	VmaAllocation uniform_buffer_allocation;
-	GlobalUniforms* uniform_buffer_mapped;
+    VkBuffer index_buffer;
+    VmaAllocation index_buffer_allocation;
+    uint32_t index_count;
 
-	VkDescriptorSetLayout descriptor_set_layout;
-	VkDescriptorPool descriptor_pool;
-	VkDescriptorSet descriptor_set;
+    VkBuffer uniform_buffer;
+    VmaAllocation uniform_buffer_allocation;
+    GlobalUniforms* uniform_buffer_mapped;
+
+    VkDescriptorSetLayout descriptor_set_layout;
+    VkDescriptorPool descriptor_pool;
+    VkDescriptorSet descriptor_set;
 };
 
 struct FrameData {

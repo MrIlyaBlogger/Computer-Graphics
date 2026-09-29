@@ -73,7 +73,7 @@ void render(const graphics::internal::FrameData& fd) {
 
 	vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ctx.pipeline_layout, 0, 1, &ctx.descriptor_set, 0, nullptr);
 
-	vkCmdDrawIndexed(fd.framebuffer, ctx.index_count, 1, 0, 0, 0);
+	vkCmdDrawIndexed(fd.command_buffer, ctx.index_count, 1, 0, 0, 0);
 
 	vkCmdEndRenderPass(fd.command_buffer);
 	vkEndCommandBuffer(fd.command_buffer);
