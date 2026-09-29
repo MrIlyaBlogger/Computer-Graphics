@@ -83,6 +83,9 @@ int main() {
 		ImGui::Render();
 
 		graphics::internal::FrameData fd = graphics::internal::prepare();
+		if (fd.framebuffer == VK_NULL_HANDLE || fd.command_buffer == VK_NULL_HANDLE) {
+			continue;
+		}
 		application::render(fd);
 		graphics::internal::submitAndPresent();
 	}

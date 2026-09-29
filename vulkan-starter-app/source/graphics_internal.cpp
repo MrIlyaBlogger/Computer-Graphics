@@ -2,6 +2,8 @@
 
 #include <iostream>
 #include <vector>
+#include <algorithm>
+#include <limits>
 
 #include <fstream>
 #include <cstring>
@@ -280,7 +282,38 @@ void drawImGUI() {
 }
 
 bool rebuildSwapchain(uint32_t width, uint32_t height) {
-	vkQueueWaitIdle(context.graphics_queue);
+	if (width == 0 || height == 0) {
+		std::cerr << "Cannot rebuild Vulkan swapchain with zero extent\n";
+		return false;
+	}
+
+	VkSurfaceCapabilitiesKHR surface_capabilities{};
+	const VkResult surface_capabilities_result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+		context.physical_device, vk_surface, &surface_capabilities);
+	if (surface_capabilities_result != VK_SUCCESS) {
+		std::cerr << "Failed to query Vulkan surface capabilities: "
+				  << surface_capabilities_result << '\n';
+		return false;
+	}
+
+	VkExtent2D effective_extent{};
+	if (surface_capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+		effective_extent = surface_capabilities.currentExtent;
+	} else {
+		if (surface_capabilities.minImageExtent.width > surface_capabilities.maxImageExtent.width ||
+			surface_capabilities.minImageExtent.height > surface_capabilities.maxImageExtent.height) {
+			std::cerr << "Invalid Vulkan surface extent limits\n";
+			return false;
+		}
+		effective_extent.width = std::clamp(width, surface_capabilities.minImageExtent.width,
+										  surface_capabilities.maxImageExtent.width);
+		effective_extent.height = std::clamp(height, surface_capabilities.minImageExtent.height,
+									   surface_capabilities.maxImageExtent.height);
+	}
+	if (effective_extent.width == 0 || effective_extent.height == 0) {
+		std::cerr << "Cannot rebuild Vulkan swapchain while surface extent is zero\n";
+		return false;
+	}
 
 	vkb::SwapchainBuilder sb(context.physical_device, context.device, vk_surface,
 	                         context.graphics_queue_index, context.graphics_queue_index);
@@ -293,9 +326,16 @@ bool rebuildSwapchain(uint32_t width, uint32_t height) {
 					   .build();
 	if (!sb_result) {
 		std::cerr << sb_result.error().message() << '\n';
+		return false;
 	}
 
 	auto vkb_swapchain = sb_result.value();
+	if (vkb_swapchain.extent.width == 0 || vkb_swapchain.extent.height == 0) {
+		std::cerr << "Swapchain builder returned a zero extent\n";
+		return false;
+	}
+
+	vkQueueWaitIdle(context.graphics_queue);
 
 	for (size_t i = 0, n = vk_swapchain_image_views.size(); i < n; ++i) {
 		vkDestroyFramebuffer(context.device, vk_imgui_framebuffers[i], nullptr);
@@ -503,9 +543,18 @@ bool initialize(GLFWwindow* const window) {
 		return false;
 	}
 
+	int framebuffer_width = 0;
+	int framebuffer_height = 0;
+	glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
+	if (framebuffer_width <= 0 || framebuffer_height <= 0) {
+		std::cerr << "Cannot initialize Vulkan swapchain with zero framebuffer extent\n";
+		return false;
+	}
+
 	vkb::SwapchainBuilder sb(vkb_device);
 
-	auto sb_result = sb.use_default_format_selection()
+	auto sb_result = sb.set_desired_extent(uint32_t(framebuffer_width), uint32_t(framebuffer_height))
+					 .use_default_format_selection()
 					   .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
 					   .use_default_image_usage_flags()
 					   .build();
@@ -515,6 +564,10 @@ bool initialize(GLFWwindow* const window) {
 	}
 
 	auto vkb_swapchain = sb_result.value();
+	if (vkb_swapchain.extent.width == 0 || vkb_swapchain.extent.height == 0) {
+		std::cerr << "Swapchain builder returned a zero extent during initialization\n";
+		return false;
+	}
 
 	vk_swapchain = vkb_swapchain.swapchain;
 	context.swapchain_format = vkb_swapchain.image_format;
@@ -994,7 +1047,9 @@ retry_acquire:
 		break;
 
 	case VK_ERROR_OUT_OF_DATE_KHR:
-		rebuildSwapchain(vk_swapchain_resize_width, vk_swapchain_resize_height);
+		if (!rebuildSwapchain(vk_swapchain_resize_width, vk_swapchain_resize_height)) {
+			return {};
+		}
 		goto retry_acquire;
 
 	case VK_SUBOPTIMAL_KHR:
@@ -1002,7 +1057,13 @@ retry_acquire:
 		break;
 
 	default:
-		std::cerr << "Failed to present Vulkan swapchain image\n";
+		std::cerr << "Failed to acquire Vulkan swapchain image\n";
+		return {};
+	}
+
+	if (vk_swapchain_current_image >= vk_framebuffers.size() ||
+		vk_framebuffers[vk_swapchain_current_image] == VK_NULL_HANDLE) {
+		std::cerr << "Acquired swapchain image has no valid framebuffer\n";
 		return {};
 	}
 
@@ -1050,7 +1111,7 @@ void submitAndPresent() {
 	    result == VK_SUBOPTIMAL_KHR ||
 	    vk_swapchain_resize_require) {
 		rebuildSwapchain(vk_swapchain_resize_width, vk_swapchain_resize_height);
-	} else {
+	} else if (result != VK_SUCCESS) {
 		std::cerr << "Failed to present Vulkan swapchain image\n";
 	}
 }
