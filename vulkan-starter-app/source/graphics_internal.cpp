@@ -446,6 +446,30 @@ bool initialize(GLFWwindow* const window) {
 	vmaCreateBuffer(context.allocator, &buffer_info, &alloc_info, &context.uniform_buffer, &context.uniform_buffer_allocation, nullptr);
 	vmaMapMemory(context.allocator, context.uniform_buffer_allocation, (void**)context.uniform_buffer_mapped);
 
+	const VkDescriptorSetLayoutBinding binding = {
+		.binding = 0,
+		.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		.descriptorCount = 1,
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+	};
+
+	const VkDescriptorSetLayoutCreateInfo layout_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.bindingCount = 1,
+		.pBindings = &binding,
+	};
+
+	vkCreateDescriptorSetLayout(context.device, &layout_info, nullptr, &context.descriptor_set_layout);
+
+	const VkDescriptorPoolSize pool_size = {
+		.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		.descriptorCount = 1,
+	};
+
+	const VkDescriptorPoolCreateInfo pool_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+	};
+
 	vkb::InstanceBuilder ib;
 
 	auto ibr = ib.require_api_version(VK_MAKE_VERSION(1, 1, 0))
