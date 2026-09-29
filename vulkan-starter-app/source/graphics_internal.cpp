@@ -896,6 +896,16 @@ void shutdown() {
 
 	ImGui_ImplVulkan_Shutdown();
 
+	vkDestroyPipeline(context.device, context.graphics_pipeline, nullptr);
+	vkDestroyPipelineLayout(context.device, context.pipeline_layout, nullptr);
+
+	vkDestroyDescriptorPool(context.device, context.descriptor_pool, nullptr);
+	vkDestroyDescriptorSetLayout(context.device, context.descriptor_set_layout, nullptr);
+
+	vmaUnmapMemory(context.allocator, context.uniform_buffer_allocation);
+	vmaDestroyBuffer(context.allocator, context.uniform_buffer, context.index_buffer_allocation);
+	vmaDestroyBuffer(context.allocator, context.vertex_buffer, context.vertex_buffer_allocation);
+
 	vkDestroyCommandPool(context.device, vk_imgui_command_pool, nullptr);
 	for (size_t i = 0, n = vk_imgui_framebuffers.size(); i < n; ++i) {
 		vkDestroyFramebuffer(context.device, vk_imgui_framebuffers[i], nullptr);
