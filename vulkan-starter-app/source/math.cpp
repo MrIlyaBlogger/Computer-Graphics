@@ -77,7 +77,7 @@ namespace math {
 		out[3][2] = nearZ * farZ / (nearZ - farZ);
 	}
 
-	inline void ortho(float l, float r, float b, float t, float t, float n, float f, Mat4 out) {
+	inline void ortho(float l, float r, float b, float t, float n, float f, Mat4 out) {
 		std::memset(out, 0, sizeof(Mat4));
 		out[0][0] = 2.0f / (r - l);
 		out[1][1] = 2.0f / (t - b);
