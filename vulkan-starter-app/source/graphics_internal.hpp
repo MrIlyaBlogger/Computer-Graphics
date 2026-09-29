@@ -12,6 +12,9 @@ namespace graphics::internal {
 
 struct GlobalUniforms {
 	float matrix[4][4];
+    float view[4][4];
+    float projection[4][4];
+    float color[4];
 };
 
 struct Context {
