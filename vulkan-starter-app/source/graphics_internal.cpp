@@ -468,7 +468,38 @@ bool initialize(GLFWwindow* const window) {
 
 	const VkDescriptorPoolCreateInfo pool_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.maxSets = 1,
+		.poolSizeCount = 1,
+		.pPoolSizes = &pool_size,
 	};
+
+	vkCreateDescriptorPool(context.device, &pool_info, nullptr, &context.descriptor_pool);
+
+	const VkDescriptorSetAllocateInfo set_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.descriptorPool = context.descriptor_pool,
+		.descriptorSetCount = 1,
+		.pSetLayouts = &context.descriptor_set_layout,
+	};
+
+	vkAllocateDescriptorSets(context.device, &set_info, &context.descriptor_set);
+
+	const VkDescriptorBufferInfo uniform_buffer_info = {
+		.buffer = context.uniform_buffer,
+		.offset = 0,
+		.range = sizeof(GlobalUniforms),
+	};
+
+	const VkWriteDescriptorSet write = {
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstSet = context.descriptor_set,
+		.dstBinding = 0,
+		.descriptorCount = 1,
+		.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		.pBufferInfo = &uniform_buffer_info,
+	};
+
+	vkUpdateDescriptorSets(context.device, 1, &write, 0, nullptr);
 
 	vkb::InstanceBuilder ib;
 
