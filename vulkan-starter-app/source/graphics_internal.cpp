@@ -410,6 +410,42 @@ bool rebuildSwapchain(uint32_t width, uint32_t height) {
 Context context;
 
 bool initialize(GLFWwindow* const window) {
+	struct Vertex {
+		float position[3];
+		float color[3];
+	};
+
+	const Vertex vertices[] = {
+		{{-1.0f, +1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+		{{ 0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+		{{+1.0f, +1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}
+	};
+
+	const uint32_t indices[] = {0, 1, 2};
+	context.index_count = 3;
+
+	VkBufferCreateInfo buffer_info = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = sizeof(vertices),
+		.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+	};
+
+	VmaAllocationCreateInfo alloc_info = {
+		.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+		.usage = VMA_MEMORY_USAGE_AUTO,
+	};
+	void* mapped_data;
+	vmaCreateBuffer(context.allocator, &buffer_info, &alloc_info, &context.index_buffer, &context.index_buffer_allocation, nullptr);
+	vmaMapMemory(context.allocator, context.index_buffer_allocation, &mapped_data);
+	memcpy(mapped_data, indices, sizeof(indices));
+	vmaUnmapMemory(context.allocator, context.index_buffer_allocation);
+
+	buffer_info.size = sizeof(indices);
+	buffer_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	vmaCreateBuffer(context.allocator, &buffer_info, &alloc_info, &context.uniform_buffer, &context.uniform_buffer_allocation, nullptr);
+	vmaMapMemory(context.allocator, context.uniform_buffer_allocation, (void**)context.uniform_buffer_mapped);
+
 	vkb::InstanceBuilder ib;
 
 	auto ibr = ib.require_api_version(VK_MAKE_VERSION(1, 1, 0))
