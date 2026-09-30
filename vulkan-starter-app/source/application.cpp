@@ -15,16 +15,15 @@ namespace {
         float color[3] = { 1.0f, 1.0f, 1.0f };
         float orbit_radius = 0.0f;
         float orbit_height = 0.0f;
-        float anim_phase = 0.0f;
     };
 
     ObjectState objects[graphics::internal::Context::OBJECT_COUNT] = {
-        { {0,0,0}, {0,0,0}, {1,1,1}, {1,1,1}, 0.0f, 0.0f, 0.0f },
+        { {0,0,0}, {0,0,0}, {1,1,1}, {1,1,1}, 2.0f, 0.5f },
     };
 
     bool  use_perspective = true;
     bool  animate = true;
-    float anim_speed = 1.0f;
+    float anim_speed = 4.0f;
     float camera_distance = 6.0f;
     float anim_time = 0.0f;
     double last_time = 0.0;
@@ -45,7 +44,9 @@ namespace application {
 
         float dt = static_cast<float>(time - last_time);
         last_time = time;
-        if (animate) anim_time += dt * anim_speed;
+        if (animate) {
+            anim_time += dt * anim_speed;
+        }
 
         float aspect = static_cast<float>(ctx.swapchain_extent.width) /
             static_cast<float>(ctx.swapchain_extent.height);
@@ -75,18 +76,17 @@ namespace application {
         for (int i = 0; i < graphics::internal::Context::OBJECT_COUNT; ++i) {
             auto& s = objects[i];
 
-            float ox = s.position[0] + std::cos(anim_time + s.anim_phase) * s.orbit_radius;
-            float oy = s.position[1] + std::sin(anim_time * 1.7f + s.anim_phase) * s.orbit_height;
-            float oz = s.position[2] + std::sin(anim_time + s.anim_phase) * s.orbit_radius;
+            float ox = s.position[0] + std::cos(anim_time) * s.orbit_radius;
+            float oy = s.position[1] + std::sin(anim_time * 1.7f) * s.orbit_height;
+            float oz = s.position[2] + std::sin(anim_time) * s.orbit_radius;
 
             math::Mat4 mT{}, mRx{}, mRy{}, mRz{}, mS{}, tmp{};
             math::translate(ox, oy, oz, mT);
-            math::rotateX(s.rotation[0] * 3.14159f / 180.0f, mRx);
-            math::rotateY(s.rotation[1] * 3.14159f / 180.0f, mRy);
-            math::rotateZ(s.rotation[2] * 3.14159f / 180.0f, mRz);
+            math::rotateX(s.rotation[0] * 3.14159f / 180.0f + anim_time, mRx);
+            math::rotateY(s.rotation[1] * 3.14159f / 180.0f + anim_time, mRy);
+            math::rotateZ(s.rotation[2] * 3.14159f / 180.0f + anim_time, mRz);
             math::scale(s.scale[0], s.scale[1], s.scale[2], mS);
 
-            // model = T * Rz * Ry * Rx * S
             math::multiply(mT, mRz, tmp);
             math::multiply(tmp, mRy, tmp);
             math::multiply(tmp, mRx, tmp);
@@ -107,14 +107,14 @@ namespace application {
 
         ImGui::Begin("Lab #1: Cone");
 
-        ImGui::Text("Projection (task 1)");
+        ImGui::Text("Projection");
         if (ImGui::RadioButton("Perspective", use_perspective)) use_perspective = true;
         ImGui::SameLine();
         if (ImGui::RadioButton("Orthographic", !use_perspective)) use_perspective = false;
         ImGui::SliderFloat("Camera distance", &camera_distance, 1.0f, 15.0f);
 
         ImGui::Separator();
-        ImGui::Text("Animation (task 3)");
+        ImGui::Text("Animation");
         ImGui::Checkbox("Play", &animate);
         ImGui::SliderFloat("Speed", &anim_speed, 0.0f, 5.0f);
 
@@ -129,7 +129,6 @@ namespace application {
             ImGui::ColorEdit3("Color", s.color);
             ImGui::SliderFloat("Orbit radius", &s.orbit_radius, 0.0f, 3.0f);
             ImGui::SliderFloat("Orbit height", &s.orbit_height, -1.0f, 1.0f);
-            ImGui::SliderFloat("Orbit phase", &s.anim_phase, 0.0f, 6.28f);
             ImGui::PopID();
         }
 
