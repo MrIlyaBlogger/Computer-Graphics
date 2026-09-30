@@ -76,16 +76,17 @@ int main() {
 		const double time = glfwGetTime();
 
 		glfwPollEvents();
+		graphics::internal::FrameData fd = graphics::internal::prepare();
+		if (fd.framebuffer == VK_NULL_HANDLE || fd.command_buffer == VK_NULL_HANDLE) {
+			continue;
+		}
+
 		ImGui_ImplGlfw_NewFrame();
 
 		ImGui::NewFrame();
 		application::update(time);
 		ImGui::Render();
 
-		graphics::internal::FrameData fd = graphics::internal::prepare();
-		if (fd.framebuffer == VK_NULL_HANDLE || fd.command_buffer == VK_NULL_HANDLE) {
-			continue;
-		}
 		application::render(fd);
 		graphics::internal::submitAndPresent();
 	}

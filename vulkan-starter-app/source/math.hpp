@@ -81,10 +81,10 @@ namespace math {
 		std::memset(out, 0, sizeof(Mat4));
 		out[0][0] = 2.0f / (r - l);
 		out[1][1] = 2.0f / (t - b);
-		out[2][2] = -2.0f / (f - n);
+		out[2][2] = 1.0f / (n - f);
 		out[3][0] = -(r + l) / (r - l);
 		out[3][1] = -(t + b) / (t - b);
-		out[3][2] = -(f + n) / (f - n);
+		out[3][2] = n / (n - f);
 		out[3][3] = 1.0f;
 	}
 

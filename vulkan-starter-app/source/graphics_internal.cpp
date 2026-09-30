@@ -1,4 +1,5 @@
 #include "graphics_internal.hpp"
+#include "math.hpp"
 
 #include <iostream>
 #include <vector>
@@ -681,18 +682,47 @@ bool initialize(GLFWwindow* const window) {
 		float color[3];
 	};
 
-	const Vertex vertices[] = {
-		{{-1.0f, +1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-		{{ 0.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-		{{+1.0f, +1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}
-	};
+	constexpr int CONE_SEGMENTS = 50;
+	constexpr float PI_F = 3.14159265358979f;
 
-	const uint32_t indices[] = { 0, 1, 2 };
-	context.index_count = 3;
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+
+	vertices.push_back({ {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f, 0.5f} });
+
+	for (int i = 0; i < CONE_SEGMENTS; i++) {
+		float angle = 2.0f * PI_F * static_cast<float>(i) / CONE_SEGMENTS;
+		float x = std::cos(angle);
+		float z = std::sin(angle);
+		float y = -1.0f;
+
+		float r = x * 0.5f + 0.5f;
+		float g = y * 0.5f + 0.5f;
+		float b = z * 0.5f + 0.5f;
+		vertices.push_back({ {x, y, z}, {r, g, b} });
+	}
+
+	vertices.push_back({ {0.0f, -1.0f, 0.0f}, {0.5f, 0.0f, 0.5f} });
+
+	for (int i = 0; i < CONE_SEGMENTS; i++) {
+		int next = (i + 1) % CONE_SEGMENTS;
+		indices.push_back(0);
+		indices.push_back(1 + next);
+		indices.push_back(1 + i);
+	}
+
+	for (int i = 0; i < CONE_SEGMENTS; i++) {
+		int next = (i + 1) % CONE_SEGMENTS;
+		indices.push_back(CONE_SEGMENTS + 1);
+		indices.push_back(1 + i);
+		indices.push_back(1 + next);
+	}
+
+	context.index_count = static_cast<uint32_t>(indices.size());
 
 	VkBufferCreateInfo buffer_info = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.size = sizeof(vertices),
+		.size = vertices.size() * sizeof(Vertex),
 		.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 	};
@@ -701,23 +731,30 @@ bool initialize(GLFWwindow* const window) {
 		.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
 		.usage = VMA_MEMORY_USAGE_AUTO,
 	};
-	void* mapped_data;
+	void* mapped_data = nullptr;
 	vmaCreateBuffer(context.allocator, &buffer_info, &alloc_info, &context.vertex_buffer, &context.vertex_buffer_allocation, nullptr);
 	vmaMapMemory(context.allocator, context.vertex_buffer_allocation, &mapped_data);
-	memcpy(mapped_data, vertices, sizeof(vertices));
+	memcpy(mapped_data, vertices.data(), vertices.size() * sizeof(Vertex));
+	if (vmaFlushAllocation(context.allocator, context.vertex_buffer_allocation,
+						0, VK_WHOLE_SIZE) != VK_SUCCESS) {
+		std::cerr << "Failed to flush Vulkan vertex buffer memory\n";
+		vmaUnmapMemory(context.allocator, context.vertex_buffer_allocation);
+		return false;
+	}
 	vmaUnmapMemory(context.allocator, context.vertex_buffer_allocation);
 
-	buffer_info.size = sizeof(indices);
+	buffer_info.size = indices.size() * sizeof(uint32_t);
 	buffer_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	vmaCreateBuffer(context.allocator, &buffer_info, &alloc_info, &context.index_buffer, &context.index_buffer_allocation, nullptr);
 	vmaMapMemory(context.allocator, context.index_buffer_allocation, &mapped_data);
-	memcpy(mapped_data, indices, sizeof(indices));
+	memcpy(mapped_data, indices.data(), indices.size() * sizeof(uint32_t));
+	if (vmaFlushAllocation(context.allocator, context.index_buffer_allocation,
+						0, VK_WHOLE_SIZE) != VK_SUCCESS) {
+		std::cerr << "Failed to flush Vulkan index buffer memory\n";
+		vmaUnmapMemory(context.allocator, context.index_buffer_allocation);
+		return false;
+	}
 	vmaUnmapMemory(context.allocator, context.index_buffer_allocation);
-
-	buffer_info.size = sizeof(GlobalUniforms);
-	buffer_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-	vmaCreateBuffer(context.allocator, &buffer_info, &alloc_info, &context.uniform_buffer, &context.uniform_buffer_allocation, nullptr);
-	vmaMapMemory(context.allocator, context.uniform_buffer_allocation, (void**)&context.uniform_buffer_mapped);
 
 	const VkPipelineViewportStateCreateInfo viewport_state = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -726,59 +763,114 @@ bool initialize(GLFWwindow* const window) {
 	};
 
 	const VkDescriptorSetLayoutBinding binding = {
-	.binding = 0,
-	.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-	.descriptorCount = 1,
-	.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+		.binding = 0,
+		.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		.descriptorCount = 1,
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
 	};
-
-	const VkDescriptorSetLayoutCreateInfo layout_info = {
+	const VkDescriptorSetLayoutCreateInfo info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.bindingCount = 1,
 		.pBindings = &binding,
 	};
 
-	vkCreateDescriptorSetLayout(context.device, &layout_info, nullptr, &context.descriptor_set_layout);
+	if (vkCreateDescriptorSetLayout(context.device, &info, nullptr,
+									&context.scene_set_layout) != VK_SUCCESS) {
+		std::cerr << "Failed to create Vulkan descriptor set layout for scene/model uniforms\n";
+		return false;
+	}
+	context.model_set_layout = context.scene_set_layout;
 
 	const VkDescriptorPoolSize pool_size = {
-		.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		.descriptorCount = 1,
+	.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+	.descriptorCount = 1 + Context::OBJECT_COUNT,
 	};
-
 	const VkDescriptorPoolCreateInfo pool_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.maxSets = 1,
+		.maxSets = 1 + Context::OBJECT_COUNT,
 		.poolSizeCount = 1,
 		.pPoolSizes = &pool_size,
 	};
-
 	vkCreateDescriptorPool(context.device, &pool_info, nullptr, &context.descriptor_pool);
+
+	VkBufferCreateInfo ubo_info = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = sizeof(SceneUniforms),
+		.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+	};
+	VmaAllocationCreateInfo ubo_alloc = {
+		.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+				 VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+		.usage = VMA_MEMORY_USAGE_AUTO,
+	};
+
+	vmaCreateBuffer(context.allocator, &ubo_info, &ubo_alloc,
+		&context.scene_uniform_buffer,
+		&context.scene_uniform_buffer_allocation, nullptr);
+	vmaMapMemory(context.allocator, context.scene_uniform_buffer_allocation,
+		(void**)&context.scene_uniform_buffer_mapped);
 
 	const VkDescriptorSetAllocateInfo set_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		.descriptorPool = context.descriptor_pool,
 		.descriptorSetCount = 1,
-		.pSetLayouts = &context.descriptor_set_layout,
+		.pSetLayouts = &context.scene_set_layout,
 	};
 
-	vkAllocateDescriptorSets(context.device, &set_info, &context.descriptor_set);
+	vkAllocateDescriptorSets(context.device, &set_info, &context.scene_descriptor_set);
 
-	const VkDescriptorBufferInfo uniform_buffer_info = {
-		.buffer = context.uniform_buffer,
+	const VkDescriptorBufferInfo buf_info = {
+		.buffer = context.scene_uniform_buffer,
 		.offset = 0,
-		.range = sizeof(GlobalUniforms),
+		.range = sizeof(SceneUniforms),
 	};
-
 	const VkWriteDescriptorSet write = {
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-		.dstSet = context.descriptor_set,
+		.dstSet = context.scene_descriptor_set,
 		.dstBinding = 0,
 		.descriptorCount = 1,
 		.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		.pBufferInfo = &uniform_buffer_info,
+		.pBufferInfo = &buf_info,
 	};
 
 	vkUpdateDescriptorSets(context.device, 1, &write, 0, nullptr);
+
+	ubo_info.size = sizeof(ModelUniform);
+
+	for (int i = 0; i < Context::OBJECT_COUNT; ++i) {
+		vmaCreateBuffer(context.allocator, &ubo_info, &ubo_alloc, &context.model_uniform_buffers[i], &context.model_uniform_buffer_allocations[i], nullptr);
+		vmaMapMemory(context.allocator, context.model_uniform_buffer_allocations[i], (void**)&context.model_uniform_buffer_mapped[i]);
+
+		const VkDescriptorSetAllocateInfo set_info = {
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			.descriptorPool = context.descriptor_pool,
+			.descriptorSetCount = 1,
+			.pSetLayouts = &context.model_set_layout,
+		};
+
+		if (vkAllocateDescriptorSets(context.device, &set_info,
+									  &context.model_descriptor_sets[i]) != VK_SUCCESS) {
+			std::cerr << "Failed to allocate Vulkan descriptor set for model #" << i << '\n';
+			return false;
+		}
+
+		const VkDescriptorBufferInfo buf_info = {
+			.buffer = context.model_uniform_buffers[i],
+			.offset = 0,
+			.range = sizeof(ModelUniform),
+		};
+
+		const VkWriteDescriptorSet write = {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = context.model_descriptor_sets[i],
+			.dstBinding = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			.pBufferInfo = &buf_info,
+		};
+		vkUpdateDescriptorSets(context.device, 1, &write, 0, nullptr);
+	}
 
 	VkShaderModule vert_shader = loadShaderModule("shaders/shader.vert.spv");
 	VkShaderModule frag_shader = loadShaderModule("shaders/shader.frag.spv");
@@ -827,7 +919,7 @@ bool initialize(GLFWwindow* const window) {
 	const VkPipelineRasterizationStateCreateInfo rasterizer = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
 		.polygonMode = VK_POLYGON_MODE_FILL,
-		.cullMode = VK_CULL_MODE_BACK_BIT,
+		.cullMode = VK_CULL_MODE_NONE,
 		.frontFace = VK_FRONT_FACE_CLOCKWISE,
 		.lineWidth = 1.0f,
 	};
@@ -854,10 +946,15 @@ bool initialize(GLFWwindow* const window) {
 		.pAttachments = &color_blend_attachment,
 	};
 
+	const VkDescriptorSetLayout set_layouts[] = {
+	context.scene_set_layout,
+	context.model_set_layout,
+	};
+
 	const VkPipelineLayoutCreateInfo pipeline_layout_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-		.setLayoutCount = 1,
-		.pSetLayouts = &context.descriptor_set_layout,
+		.setLayoutCount = 2,
+		.pSetLayouts = set_layouts,
 	};
 
 	vkCreatePipelineLayout(context.device, &pipeline_layout_info, nullptr, &context.pipeline_layout);
@@ -981,13 +1078,21 @@ void shutdown() {
 	vkDestroyPipeline(context.device, context.graphics_pipeline, nullptr);
 	vkDestroyPipelineLayout(context.device, context.pipeline_layout, nullptr);
 
-	vkDestroyDescriptorPool(context.device, context.descriptor_pool, nullptr);
-	vkDestroyDescriptorSetLayout(context.device, context.descriptor_set_layout, nullptr);
+	vmaUnmapMemory(context.allocator, context.scene_uniform_buffer_allocation);
+	vmaDestroyBuffer(context.allocator, context.scene_uniform_buffer,
+		context.scene_uniform_buffer_allocation);
 
-	vmaUnmapMemory(context.allocator, context.uniform_buffer_allocation);
-	vmaDestroyBuffer(context.allocator, context.uniform_buffer, context.uniform_buffer_allocation);
-	vmaDestroyBuffer(context.allocator, context.index_buffer, context.index_buffer_allocation);
+	for (int i = 0; i < Context::OBJECT_COUNT; ++i) {
+		vmaUnmapMemory(context.allocator, context.model_uniform_buffer_allocations[i]);
+		vmaDestroyBuffer(context.allocator, context.model_uniform_buffers[i],
+			context.model_uniform_buffer_allocations[i]);
+	}
+
+	vkDestroyDescriptorPool(context.device, context.descriptor_pool, nullptr);
+	vkDestroyDescriptorSetLayout(context.device, context.scene_set_layout, nullptr);
+
 	vmaDestroyBuffer(context.allocator, context.vertex_buffer, context.vertex_buffer_allocation);
+	vmaDestroyBuffer(context.allocator, context.index_buffer, context.index_buffer_allocation);
 
 	vkDestroyCommandPool(context.device, vk_imgui_command_pool, nullptr);
 	for (size_t i = 0, n = vk_imgui_framebuffers.size(); i < n; ++i) {

@@ -108,6 +108,13 @@ set(_SHADER_BINARIES)
 
 	add_custom_target(shaders DEPENDS ${_SHADER_BINARIES})
 	add_dependencies(${PROJECT_NAME} shaders)
+	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders"
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+			${CMAKE_SOURCE_DIR}/shaders/shader.vert.spv
+			${CMAKE_SOURCE_DIR}/shaders/shader.frag.spv
+			"$<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders"
+	)
 
 	set_target_properties(${PROJECT_NAME} PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
