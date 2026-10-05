@@ -21,8 +21,8 @@ namespace {
         { {0,0,0}, {0,0,0}, {1,1,1}, {1,1,1}, 2.0f, 0.5f },
     };
 
-    bool  use_perspective = true;
-    bool  animate = true;
+    bool use_perspective = true;
+    bool animate = true;
     float anim_speed = 4.0f;
     float camera_distance = 6.0f;
     float anim_time = 0.0f;
