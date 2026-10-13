@@ -18,7 +18,9 @@ namespace {
     };
 
     ObjectState objects[graphics::internal::Context::OBJECT_COUNT] = {
-        { {0,0,0}, {0,0,0}, {1,1,1}, {1,1,1}, 2.0f, 0.5f },
+        { {-1.5f,0,0}, {0,0,0}, {0.7f,0.7f,0.7f}, {1,1,1}, 0.0f, 0.0f },
+        { {0,0,0}, {0,0,0}, {0.7f,0.7f,0.7f}, {1,1,1}, 0.0f, 0.0f },
+        { {1.5f,0,0}, {0,0,0}, {0.7f,0.7f,0.7f}, {1,1,1}, 0.0f, 0.0f },
     };
 
     bool  use_perspective = true;
