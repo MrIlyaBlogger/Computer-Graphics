@@ -88,4 +88,34 @@ namespace math {
 		out[3][3] = 1.0f;
 	}
 
+	inline void lookAt(const float eye[3], const float target[3], const float worldUp[3], Mat4 out) {
+		float forward[3] = {
+			target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]
+		};
+		float length = std::sqrt(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]);
+		for (float& v : forward) v /= length;
+
+		float right[3] = {
+			forward[1] * worldUp[2] - forward[2] * worldUp[1],
+			forward[2] * worldUp[0] - forward[0] * worldUp[2],
+			forward[0] * worldUp[1] - forward[1] * worldUp[0]
+		};
+		length = std::sqrt(right[0] * right[0] + right[1] * right[1] + right[2] * right[2]);
+		for (float& v : right) v /= length;
+
+		float up[3] = {
+			right[1] * forward[2] - right[2] * forward[1],
+			right[2] * forward[0] - right[0] * forward[2],
+			right[0] * forward[1] - right[1] * forward[0]
+		};
+
+		identity(out);
+		out[0][0] = right[0]; out[0][1] = up[0]; out[0][2] = -forward[0];
+		out[1][0] = right[1]; out[1][1] = up[1]; out[1][2] = -forward[1];
+		out[2][0] = right[2]; out[2][1] = up[2]; out[2][2] = -forward[2];
+		out[3][0] = -(right[0] * eye[0] + right[1] * eye[1] + right[2] * eye[2]);
+		out[3][1] = -(up[0] * eye[0] + up[1] * eye[1] + up[2] * eye[2]);
+		out[3][2] = forward[0] * eye[0] + forward[1] * eye[1] + forward[2] * eye[2];
+	}
+
 }

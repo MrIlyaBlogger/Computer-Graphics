@@ -680,6 +680,7 @@ bool initialize(GLFWwindow* const window) {
 	struct Vertex {
 		float position[3];
 		float color[3];
+		float normal[3];
 	};
 
 	constexpr int CONE_SEGMENTS = 50;
@@ -687,38 +688,55 @@ bool initialize(GLFWwindow* const window) {
 
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
+	const auto addVertex = [&vertices, &indices](float x, float y, float z,
+										 float nx, float ny, float nz) {
+		vertices.push_back({ {x, y, z}, {1.0f, 1.0f, 1.0f}, {nx, ny, nz} });
+		indices.push_back(static_cast<uint32_t>(vertices.size() - 1));
+	};
 
-	vertices.push_back({ {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f, 0.5f} });
+	for (int i = 0; i < CONE_SEGMENTS; ++i) {
+		const float a0 = 2.0f * PI_F * static_cast<float>(i) / CONE_SEGMENTS;
+		const float a1 = 2.0f * PI_F * static_cast<float>(i + 1) / CONE_SEGMENTS;
+		const float x0 = std::cos(a0), z0 = std::sin(a0);
+		const float x1 = std::cos(a1), z1 = std::sin(a1);
+		const float xm = (x0 + x1) * 0.5f, zm = (z0 + z1) * 0.5f;
+		const float nl = std::sqrt(xm * xm + 0.25f + zm * zm);
+		const float nx = xm / nl, ny = 0.5f / nl, nz = zm / nl;
 
-	for (int i = 0; i < CONE_SEGMENTS; i++) {
-		float angle = 2.0f * PI_F * static_cast<float>(i) / CONE_SEGMENTS;
-		float x = std::cos(angle);
-		float z = std::sin(angle);
-		float y = -1.0f;
-
-		float r = x * 0.5f + 0.5f;
-		float g = y * 0.5f + 0.5f;
-		float b = z * 0.5f + 0.5f;
-		vertices.push_back({ {x, y, z}, {r, g, b} });
-	}
-
-	vertices.push_back({ {0.0f, -1.0f, 0.0f}, {0.5f, 0.0f, 0.5f} });
-
-	for (int i = 0; i < CONE_SEGMENTS; i++) {
-		int next = (i + 1) % CONE_SEGMENTS;
-		indices.push_back(0);
-		indices.push_back(1 + next);
-		indices.push_back(1 + i);
-	}
-
-	for (int i = 0; i < CONE_SEGMENTS; i++) {
-		int next = (i + 1) % CONE_SEGMENTS;
-		indices.push_back(CONE_SEGMENTS + 1);
-		indices.push_back(1 + i);
-		indices.push_back(1 + next);
+		addVertex(0.0f, 1.0f, 0.0f, nx, ny, nz);
+		addVertex(x1, -1.0f, z1, nx, ny, nz);
+		addVertex(x0, -1.0f, z0, nx, ny, nz);
+		addVertex(0.0f, -1.0f, 0.0f, 0.0f, -1.0f, 0.0f);
+		addVertex(x0, -1.0f, z0, 0.0f, -1.0f, 0.0f);
+		addVertex(x1, -1.0f, z1, 0.0f, -1.0f, 0.0f);
 	}
 
 	context.index_count = static_cast<uint32_t>(indices.size());
+	context.sphere_index_start = context.index_count;
+	constexpr int SPHERE_RINGS = 8;
+	constexpr int SPHERE_SEGMENTS = 12;
+	for (int ring = 0; ring < SPHERE_RINGS; ++ring) {
+		const float v0 = PI_F * static_cast<float>(ring) / SPHERE_RINGS;
+		const float v1 = PI_F * static_cast<float>(ring + 1) / SPHERE_RINGS;
+		for (int segment = 0; segment < SPHERE_SEGMENTS; ++segment) {
+			const float u0 = 2.0f * PI_F * static_cast<float>(segment) / SPHERE_SEGMENTS;
+			const float u1 = 2.0f * PI_F * static_cast<float>(segment + 1) / SPHERE_SEGMENTS;
+			const float p[4][3] = {
+				{ std::sin(v0) * std::cos(u0), std::cos(v0), std::sin(v0) * std::sin(u0) },
+				{ std::sin(v0) * std::cos(u1), std::cos(v0), std::sin(v0) * std::sin(u1) },
+				{ std::sin(v1) * std::cos(u1), std::cos(v1), std::sin(v1) * std::sin(u1) },
+				{ std::sin(v1) * std::cos(u0), std::cos(v1), std::sin(v1) * std::sin(u0) },
+			};
+			const int triangles[2][3] = { { 0, 1, 2 }, { 0, 2, 3 } };
+			for (const auto& triangle : triangles) {
+				for (int vertex : triangle) {
+					addVertex(p[vertex][0], p[vertex][1], p[vertex][2],
+						p[vertex][0], p[vertex][1], p[vertex][2]);
+				}
+			}
+		}
+	}
+	context.sphere_index_count = static_cast<uint32_t>(indices.size()) - context.sphere_index_start;
 
 	VkBufferCreateInfo buffer_info = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -762,36 +780,68 @@ bool initialize(GLFWwindow* const window) {
 		.scissorCount = 1,
 	};
 
+	const VkDescriptorSetLayoutBinding scene_bindings[] = {
+		{
+			.binding = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+		},
+		{
+			.binding = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+		},
+		{
+			.binding = 2,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+		},
+	};
+	const VkDescriptorSetLayoutCreateInfo scene_layout_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.bindingCount = 3,
+		.pBindings = scene_bindings,
+	};
+	if (vkCreateDescriptorSetLayout(context.device, &scene_layout_info, nullptr,
+									&context.scene_set_layout) != VK_SUCCESS) {
+		std::cerr << "Failed to create Vulkan descriptor set layout for scene uniforms and lights\n";
+		return false;
+	}
+
 	const VkDescriptorSetLayoutBinding binding = {
 		.binding = 0,
 		.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		.descriptorCount = 1,
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
 	};
-	const VkDescriptorSetLayoutCreateInfo info = {
+	const VkDescriptorSetLayoutCreateInfo model_layout_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.bindingCount = 1,
 		.pBindings = &binding,
 	};
-
-	if (vkCreateDescriptorSetLayout(context.device, &info, nullptr,
-									&context.scene_set_layout) != VK_SUCCESS) {
-		std::cerr << "Failed to create Vulkan descriptor set layout for scene/model uniforms\n";
+	if (vkCreateDescriptorSetLayout(context.device, &model_layout_info, nullptr,
+									&context.model_set_layout) != VK_SUCCESS) {
+		std::cerr << "Failed to create Vulkan descriptor set layout for model uniforms\n";
 		return false;
 	}
-	context.model_set_layout = context.scene_set_layout;
 
-	const VkDescriptorPoolSize pool_size = {
-	.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-	.descriptorCount = 1 + Context::OBJECT_COUNT,
+	const VkDescriptorPoolSize pool_sizes[] = {
+		{ .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = 1 + Context::OBJECT_COUNT },
+		{ .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount = 2 },
 	};
 	const VkDescriptorPoolCreateInfo pool_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 		.maxSets = 1 + Context::OBJECT_COUNT,
-		.poolSizeCount = 1,
-		.pPoolSizes = &pool_size,
+		.poolSizeCount = 2,
+		.pPoolSizes = pool_sizes,
 	};
-	vkCreateDescriptorPool(context.device, &pool_info, nullptr, &context.descriptor_pool);
+	if (vkCreateDescriptorPool(context.device, &pool_info, nullptr, &context.descriptor_pool) != VK_SUCCESS) {
+		std::cerr << "Failed to create Vulkan descriptor pool\n";
+		return false;
+	}
 
 	VkBufferCreateInfo ubo_info = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -811,45 +861,96 @@ bool initialize(GLFWwindow* const window) {
 	vmaMapMemory(context.allocator, context.scene_uniform_buffer_allocation,
 		(void**)&context.scene_uniform_buffer_mapped);
 
-	const VkDescriptorSetAllocateInfo set_info = {
+	ubo_info.size = sizeof(PointLight) * Context::LIGHT_BUFFER_CAPACITY;
+	ubo_info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+	if (vmaCreateBuffer(context.allocator, &ubo_info, &ubo_alloc,
+		&context.point_light_buffer, &context.point_light_buffer_allocation, nullptr) != VK_SUCCESS ||
+		vmaMapMemory(context.allocator, context.point_light_buffer_allocation,
+			(void**)&context.point_light_buffer_mapped) != VK_SUCCESS) {
+		std::cerr << "Failed to create point light storage buffer\n";
+		return false;
+	}
+	ubo_info.size = sizeof(SpotLight) * Context::LIGHT_BUFFER_CAPACITY;
+	if (vmaCreateBuffer(context.allocator, &ubo_info, &ubo_alloc,
+		&context.spot_light_buffer, &context.spot_light_buffer_allocation, nullptr) != VK_SUCCESS ||
+		vmaMapMemory(context.allocator, context.spot_light_buffer_allocation,
+			(void**)&context.spot_light_buffer_mapped) != VK_SUCCESS) {
+		std::cerr << "Failed to create spot light storage buffer\n";
+		return false;
+	}
+
+	const VkDescriptorSetAllocateInfo scene_set_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		.descriptorPool = context.descriptor_pool,
 		.descriptorSetCount = 1,
 		.pSetLayouts = &context.scene_set_layout,
 	};
 
-	vkAllocateDescriptorSets(context.device, &set_info, &context.scene_descriptor_set);
+	if (vkAllocateDescriptorSets(context.device, &scene_set_info,
+								 &context.scene_descriptor_set) != VK_SUCCESS) {
+		std::cerr << "Failed to allocate Vulkan descriptor set for scene data\n";
+		return false;
+	}
 
-	const VkDescriptorBufferInfo buf_info = {
+	const VkDescriptorBufferInfo scene_buf_info = {
 		.buffer = context.scene_uniform_buffer,
 		.offset = 0,
 		.range = sizeof(SceneUniforms),
 	};
-	const VkWriteDescriptorSet write = {
+	const VkDescriptorBufferInfo point_buf_info = {
+		.buffer = context.point_light_buffer,
+		.offset = 0,
+		.range = sizeof(PointLight) * Context::LIGHT_BUFFER_CAPACITY,
+	};
+	const VkDescriptorBufferInfo spot_buf_info = {
+		.buffer = context.spot_light_buffer,
+		.offset = 0,
+		.range = sizeof(SpotLight) * Context::LIGHT_BUFFER_CAPACITY,
+	};
+	const VkWriteDescriptorSet scene_writes[] = {
+		{
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 		.dstSet = context.scene_descriptor_set,
 		.dstBinding = 0,
 		.descriptorCount = 1,
 		.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		.pBufferInfo = &buf_info,
+		.pBufferInfo = &scene_buf_info,
+		},
+		{
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstSet = context.scene_descriptor_set,
+		.dstBinding = 1,
+		.descriptorCount = 1,
+		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		.pBufferInfo = &point_buf_info,
+		},
+		{
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstSet = context.scene_descriptor_set,
+		.dstBinding = 2,
+		.descriptorCount = 1,
+		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		.pBufferInfo = &spot_buf_info,
+		},
 	};
 
-	vkUpdateDescriptorSets(context.device, 1, &write, 0, nullptr);
+	vkUpdateDescriptorSets(context.device, 3, scene_writes, 0, nullptr);
 
 	ubo_info.size = sizeof(ModelUniform);
+	ubo_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 
 	for (int i = 0; i < Context::OBJECT_COUNT; ++i) {
 		vmaCreateBuffer(context.allocator, &ubo_info, &ubo_alloc, &context.model_uniform_buffers[i], &context.model_uniform_buffer_allocations[i], nullptr);
 		vmaMapMemory(context.allocator, context.model_uniform_buffer_allocations[i], (void**)&context.model_uniform_buffer_mapped[i]);
 
-		const VkDescriptorSetAllocateInfo set_info = {
+		const VkDescriptorSetAllocateInfo model_set_info = {
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 			.descriptorPool = context.descriptor_pool,
 			.descriptorSetCount = 1,
 			.pSetLayouts = &context.model_set_layout,
 		};
 
-		if (vkAllocateDescriptorSets(context.device, &set_info,
+		if (vkAllocateDescriptorSets(context.device, &model_set_info,
 									  &context.model_descriptor_sets[i]) != VK_SUCCESS) {
 			std::cerr << "Failed to allocate Vulkan descriptor set for model #" << i << '\n';
 			return false;
@@ -893,13 +994,14 @@ bool initialize(GLFWwindow* const window) {
 	const VkVertexInputAttributeDescription vertex_attributes[] = {
 		{.location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, position)},
 		{.location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, color)},
+		{.location = 2, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, normal)},
 	};
 
 	const VkPipelineVertexInputStateCreateInfo vertex_input_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 		.vertexBindingDescriptionCount = 1,
 		.pVertexBindingDescriptions = &vertex_binding,
-		.vertexAttributeDescriptionCount = 2,
+		.vertexAttributeDescriptionCount = 3,
 		.pVertexAttributeDescriptions = vertex_attributes,
 	};
 
@@ -1081,6 +1183,12 @@ void shutdown() {
 	vmaUnmapMemory(context.allocator, context.scene_uniform_buffer_allocation);
 	vmaDestroyBuffer(context.allocator, context.scene_uniform_buffer,
 		context.scene_uniform_buffer_allocation);
+	vmaUnmapMemory(context.allocator, context.point_light_buffer_allocation);
+	vmaDestroyBuffer(context.allocator, context.point_light_buffer,
+		context.point_light_buffer_allocation);
+	vmaUnmapMemory(context.allocator, context.spot_light_buffer_allocation);
+	vmaDestroyBuffer(context.allocator, context.spot_light_buffer,
+		context.spot_light_buffer_allocation);
 
 	for (int i = 0; i < Context::OBJECT_COUNT; ++i) {
 		vmaUnmapMemory(context.allocator, context.model_uniform_buffer_allocations[i]);
@@ -1090,6 +1198,7 @@ void shutdown() {
 
 	vkDestroyDescriptorPool(context.device, context.descriptor_pool, nullptr);
 	vkDestroyDescriptorSetLayout(context.device, context.scene_set_layout, nullptr);
+	vkDestroyDescriptorSetLayout(context.device, context.model_set_layout, nullptr);
 
 	vmaDestroyBuffer(context.allocator, context.vertex_buffer, context.vertex_buffer_allocation);
 	vmaDestroyBuffer(context.allocator, context.index_buffer, context.index_buffer_allocation);

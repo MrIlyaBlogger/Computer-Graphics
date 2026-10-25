@@ -13,11 +13,28 @@ namespace graphics::internal {
 struct SceneUniforms {
     float projection[4][4];
     float view[4][4];
+    float camera_position[4];
+    float directional_direction[4];
+    float directional_color[4];
+    float ambient_color[4];
+    float light_counts[4];
 };
 
 struct ModelUniform {
     float model[4][4];
+    float albedo[4];
+    float specular_shininess[4];
+};
+
+struct PointLight {
+    float position_intensity[4];
     float color[4];
+};
+
+struct SpotLight {
+    float position_intensity[4];
+    float direction_inner_cos[4];
+    float color_outer_cos[4];
 };
 
 struct Context {
@@ -38,6 +55,8 @@ struct Context {
     VkBuffer index_buffer;
     VmaAllocation index_buffer_allocation;
     uint32_t index_count;
+    uint32_t sphere_index_start;
+    uint32_t sphere_index_count;
 
     VkDescriptorSetLayout scene_set_layout;
     VkBuffer scene_uniform_buffer;
@@ -45,7 +64,14 @@ struct Context {
     SceneUniforms* scene_uniform_buffer_mapped;
     VkDescriptorSet scene_descriptor_set;
 
-    static constexpr int OBJECT_COUNT = 1;
+    VkBuffer point_light_buffer;
+    VmaAllocation point_light_buffer_allocation;
+    PointLight* point_light_buffer_mapped;
+    VkBuffer spot_light_buffer;
+    VmaAllocation spot_light_buffer_allocation;
+    SpotLight* spot_light_buffer_mapped;
+    static constexpr uint32_t LIGHT_BUFFER_CAPACITY = 32;
+    static constexpr int OBJECT_COUNT = 1 + 2 * LIGHT_BUFFER_CAPACITY;
     VkDescriptorSetLayout model_set_layout;
     VkBuffer model_uniform_buffers[OBJECT_COUNT];
     VmaAllocation model_uniform_buffer_allocations[OBJECT_COUNT];
