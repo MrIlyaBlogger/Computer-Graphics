@@ -273,20 +273,25 @@ namespace application {
         ImGui::Begin("Lab #2: Camera and lighting");
         ImGui::Checkbox("Show light visualizers", &show_light_visualizers);
 
+        ImGui::PushID("Camera");
         if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::SliderFloat3("Position", camera_position, -10.0f, 10.0f);
             ImGui::SliderFloat("Yaw (deg)", &camera_yaw, -180.0f, 180.0f);
             ImGui::SliderFloat("Pitch (deg)", &camera_pitch, -89.0f, 89.0f);
             ImGui::SliderFloat("Field of view", &camera_fov, 25.0f, 110.0f);
         }
+        ImGui::PopID();
 
+        ImGui::PushID("Directional light");
         if (ImGui::CollapsingHeader("Directional light", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::SliderFloat3("Direction", directional_direction, -1.0f, 1.0f);
             ImGui::ColorEdit3("Color", directional_color);
             ImGui::SliderFloat("Intensity", &directional_intensity, 0.0f, 5.0f);
             ImGui::ColorEdit3("Ambient light", ambient_color);
         }
+        ImGui::PopID();
 
+        ImGui::PushID("Point lights");
         if (ImGui::CollapsingHeader("Point lights", ImGuiTreeNodeFlags_DefaultOpen)) {
             if (point_lights.size() < graphics::internal::Context::LIGHT_BUFFER_CAPACITY &&
                 ImGui::Button("Add point light")) {
@@ -307,7 +312,9 @@ namespace application {
                 ImGui::PopID();
             }
         }
+        ImGui::PopID();
 
+        ImGui::PushID("Spot lights");
         if (ImGui::CollapsingHeader("Spot lights")) {
             if (spot_lights.size() < graphics::internal::Context::LIGHT_BUFFER_CAPACITY &&
                 ImGui::Button("Add spot light")) {
@@ -333,7 +340,9 @@ namespace application {
                 ImGui::PopID();
             }
         }
+        ImGui::PopID();
 
+        ImGui::PushID("Object material");
         if (ImGui::CollapsingHeader("Object material", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::SliderFloat3("Position", object.position, -3.0f, 3.0f);
             ImGui::SliderFloat3("Rotation (deg)", object.rotation, -180.0f, 180.0f);
@@ -342,6 +351,7 @@ namespace application {
             ImGui::ColorEdit3("Specular color", object.specular);
             ImGui::SliderFloat("Shininess", &object.shininess, 1.0f, 128.0f);
         }
+        ImGui::PopID();
 
         ImGui::End();
     }
