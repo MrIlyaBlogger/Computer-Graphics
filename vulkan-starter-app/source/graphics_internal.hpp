@@ -45,7 +45,7 @@ struct Context {
     SceneUniforms* scene_uniform_buffer_mapped;
     VkDescriptorSet scene_descriptor_set;
 
-    static constexpr int OBJECT_COUNT = 3;
+    static constexpr int OBJECT_COUNT = 1;
     VkDescriptorSetLayout model_set_layout;
     VkBuffer model_uniform_buffers[OBJECT_COUNT];
     VmaAllocation model_uniform_buffer_allocations[OBJECT_COUNT];
