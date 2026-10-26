@@ -48,8 +48,11 @@ vec3 blinnPhong(vec3 normal, vec3 light_direction, vec3 view_direction,
                 vec3 light_color, float intensity) {
   float diffuse_factor = max(dot(normal, light_direction), 0.0);
   vec3 half_direction = normalize(light_direction + view_direction);
-  float specular_factor = pow(max(dot(normal, half_direction), 0.0),
-                              model_uniforms.specular_shininess.w);
+  float specular_factor = 0.0;
+  if (diffuse_factor > 0.0) {
+    specular_factor = pow(max(dot(normal, half_direction), 0.0),
+                          model_uniforms.specular_shininess.w);
+  }
   vec3 diffuse = model_uniforms.albedo.rgb * diffuse_factor;
   vec3 specular = model_uniforms.specular_shininess.rgb * specular_factor;
   return (diffuse + specular) * light_color * intensity;

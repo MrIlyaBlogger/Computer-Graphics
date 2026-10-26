@@ -36,7 +36,47 @@ namespace {
         float color[3];
     };
 
-    ObjectState object;
+    std::vector<ObjectState> objects = [] {
+        std::vector<ObjectState> result(5);
+        result[0].position[1] = -0.1f;
+        result[0].scale[0] = result[0].scale[1] = result[0].scale[2] = 0.75f;
+        result[0].albedo[0] = 0.25f;
+        result[0].albedo[1] = 0.65f;
+        result[0].albedo[2] = 1.0f;
+
+        result[1].position[0] = -1.8f;
+        result[1].position[1] = 0.1f;
+        result[1].scale[0] = result[1].scale[1] = result[1].scale[2] = 0.48f;
+        result[1].rotation[1] = -25.0f;
+        result[1].albedo[0] = 1.0f;
+        result[1].albedo[1] = 0.35f;
+        result[1].albedo[2] = 0.2f;
+
+        result[2].position[0] = 1.8f;
+        result[2].position[1] = 0.1f;
+        result[2].scale[0] = result[2].scale[1] = result[2].scale[2] = 0.55f;
+        result[2].rotation[1] = 25.0f;
+        result[2].albedo[0] = 0.35f;
+        result[2].albedo[1] = 1.0f;
+        result[2].albedo[2] = 0.4f;
+
+        result[3].position[1] = 1.5f;
+        result[3].position[2] = -0.7f;
+        result[3].scale[0] = result[3].scale[1] = result[3].scale[2] = 0.42f;
+        result[3].rotation[2] = 15.0f;
+        result[3].albedo[0] = 1.0f;
+        result[3].albedo[1] = 0.8f;
+        result[3].albedo[2] = 0.2f;
+
+        result[4].position[1] = -1.5f;
+        result[4].position[2] = -0.7f;
+        result[4].scale[0] = result[4].scale[1] = result[4].scale[2] = 0.42f;
+        result[4].rotation[2] = -15.0f;
+        result[4].albedo[0] = 0.9f;
+        result[4].albedo[1] = 0.35f;
+        result[4].albedo[2] = 0.8f;
+        return result;
+    }();
     float camera_position[3] = { 0.0f, 0.0f, 6.0f };
     float camera_yaw = 0.0f;
     float camera_pitch = 0.0f;
@@ -236,29 +276,32 @@ namespace application {
         flushBuffer(ctx.spot_light_buffer_allocation,
                     "Failed to flush spot light storage buffer memory");
 
-        math::Mat4 mT{}, mRx{}, mRy{}, mRz{}, mS{}, model{};
-        math::translate(object.position[0], object.position[1], object.position[2], mT);
-        math::rotateX(object.rotation[0] * DEG_TO_RAD, mRx);
-        math::rotateY(object.rotation[1] * DEG_TO_RAD, mRy);
-        math::rotateZ(object.rotation[2] * DEG_TO_RAD, mRz);
-        math::scale(object.scale[0], object.scale[1], object.scale[2], mS);
-        math::multiply(mT, mRz, model);
-        math::multiply(model, mRy, model);
-        math::multiply(model, mRx, model);
-        math::multiply(model, mS, model);
+        for (size_t i = 0; i < objects.size(); ++i) {
+            const auto& object = objects[i];
+            math::Mat4 mT{}, mRx{}, mRy{}, mRz{}, mS{}, model{};
+            math::translate(object.position[0], object.position[1], object.position[2], mT);
+            math::rotateX(object.rotation[0] * DEG_TO_RAD, mRx);
+            math::rotateY(object.rotation[1] * DEG_TO_RAD, mRy);
+            math::rotateZ(object.rotation[2] * DEG_TO_RAD, mRz);
+            math::scale(object.scale[0], object.scale[1], object.scale[2], mS);
+            math::multiply(mT, mRz, model);
+            math::multiply(model, mRy, model);
+            math::multiply(model, mRx, model);
+            math::multiply(model, mS, model);
 
-        auto* model_uniform = ctx.model_uniform_buffer_mapped[0];
-        std::memcpy(model_uniform->model, model, sizeof(model));
-        model_uniform->albedo[0] = object.albedo[0];
-        model_uniform->albedo[1] = object.albedo[1];
-        model_uniform->albedo[2] = object.albedo[2];
-        model_uniform->albedo[3] = 1.0f;
-        model_uniform->specular_shininess[0] = object.specular[0];
-        model_uniform->specular_shininess[1] = object.specular[1];
-        model_uniform->specular_shininess[2] = object.specular[2];
-        model_uniform->specular_shininess[3] = object.shininess;
-        flushBuffer(ctx.model_uniform_buffer_allocations[0],
-                    "Failed to flush model uniform buffer memory");
+            auto* model_uniform = ctx.model_uniform_buffer_mapped[i];
+            std::memcpy(model_uniform->model, model, sizeof(model));
+            model_uniform->albedo[0] = object.albedo[0];
+            model_uniform->albedo[1] = object.albedo[1];
+            model_uniform->albedo[2] = object.albedo[2];
+            model_uniform->albedo[3] = 1.0f;
+            model_uniform->specular_shininess[0] = object.specular[0];
+            model_uniform->specular_shininess[1] = object.specular[1];
+            model_uniform->specular_shininess[2] = object.specular[2];
+            model_uniform->specular_shininess[3] = object.shininess;
+            flushBuffer(ctx.model_uniform_buffer_allocations[i],
+                        "Failed to flush model uniform buffer memory");
+        }
 
         const auto writeLightMarker = [&ctx](int index, const float position[3],
                                              const float color[3], float radius) {
@@ -280,7 +323,8 @@ namespace application {
                         "Failed to flush light visualizer model buffer memory");
         };
         for (size_t i = 0; i < point_lights.size(); ++i) {
-            writeLightMarker(1 + static_cast<int>(i), point_lights[i].position,
+            writeLightMarker(graphics::internal::Context::OBJECT_CAPACITY + static_cast<int>(i),
+                             point_lights[i].position,
                              point_lights[i].color, 0.14f);
         }
         for (size_t i = 0; i < spot_lights.size(); ++i) {
@@ -330,7 +374,8 @@ namespace application {
             math::translate(center[0], center[1], center[2], marker_translation);
             math::multiply(rotation, marker_scale, marker_model);
             math::multiply(marker_translation, marker_model, marker_model);
-            const int marker_index = 1 + graphics::internal::Context::LIGHT_BUFFER_CAPACITY +
+            const int marker_index = graphics::internal::Context::OBJECT_CAPACITY +
+                graphics::internal::Context::LIGHT_BUFFER_CAPACITY +
                 static_cast<int>(i);
             auto* marker = ctx.model_uniform_buffer_mapped[marker_index];
             std::memcpy(marker->model, marker_model, sizeof(marker_model));
@@ -374,9 +419,9 @@ namespace application {
         };
         constexpr float arrow_length = 1.8f;
         const float arrow_center[3] = {
-            object.position[0] - ray_direction[0] * (arrow_length * 0.5f + 0.2f),
-            object.position[1] - ray_direction[1] * (arrow_length * 0.5f + 0.2f),
-            object.position[2] - ray_direction[2] * (arrow_length * 0.5f + 0.2f)
+            objects[0].position[0] - ray_direction[0] * (arrow_length * 0.5f + 0.2f),
+            objects[0].position[1] - ray_direction[1] * (arrow_length * 0.5f + 0.2f),
+            objects[0].position[2] - ray_direction[2] * (arrow_length * 0.5f + 0.2f)
         };
         math::Mat4 arrow_rotation{}, arrow_scale{}, arrow_translation{}, arrow_model{};
         math::identity(arrow_rotation);
@@ -389,7 +434,7 @@ namespace application {
         math::translate(arrow_center[0], arrow_center[1], arrow_center[2], arrow_translation);
         math::multiply(arrow_rotation, arrow_scale, arrow_model);
         math::multiply(arrow_translation, arrow_model, arrow_model);
-        const int directional_marker_index = 1 +
+        const int directional_marker_index = graphics::internal::Context::OBJECT_CAPACITY +
             2 * graphics::internal::Context::LIGHT_BUFFER_CAPACITY;
         auto* directional_marker = ctx.model_uniform_buffer_mapped[directional_marker_index];
         std::memcpy(directional_marker->model, arrow_model, sizeof(arrow_model));
@@ -486,14 +531,44 @@ namespace application {
         }
         ImGui::PopID();
 
-        ImGui::PushID("Object material");
-        if (ImGui::CollapsingHeader("Object material", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::SliderFloat3("Position", object.position, -3.0f, 3.0f);
-            ImGui::SliderFloat3("Rotation (deg)", object.rotation, -180.0f, 180.0f);
-            ImGui::SliderFloat3("Scale", object.scale, 0.1f, 3.0f);
-            ImGui::ColorEdit3("Albedo", object.albedo);
-            ImGui::ColorEdit3("Specular color", object.specular);
-            ImGui::SliderFloat("Shininess", &object.shininess, 1.0f, 128.0f);
+        ImGui::PushID("Objects");
+        if (ImGui::CollapsingHeader("Objects", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (objects.size() < graphics::internal::Context::OBJECT_CAPACITY &&
+                ImGui::Button("Add cone")) {
+                ObjectState object{};
+                const float angle = static_cast<float>(objects.size()) * 2.0f * PI_F / 6.0f;
+                object.position[0] = std::cos(angle) * 2.4f;
+                object.position[1] = std::sin(angle) * 1.6f;
+                object.position[2] = -0.8f;
+                object.scale[0] = object.scale[1] = object.scale[2] = 0.42f;
+                const float colors[][3] = {
+                    { 0.25f, 0.75f, 1.0f }, { 1.0f, 0.35f, 0.2f },
+                    { 0.35f, 1.0f, 0.45f }, { 1.0f, 0.8f, 0.2f },
+                    { 0.9f, 0.35f, 0.8f }, { 0.45f, 0.5f, 1.0f },
+                    { 0.2f, 1.0f, 0.9f }, { 1.0f, 0.5f, 0.15f }
+                };
+                const size_t color_index = objects.size() % (sizeof(colors) / sizeof(colors[0]));
+                std::copy_n(colors[color_index], 3, object.albedo);
+                objects.push_back(object);
+            }
+
+            for (size_t i = 0; i < objects.size(); ++i) {
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::Separator();
+                ImGui::Text("Cone %d", static_cast<int>(i + 1));
+                ImGui::SliderFloat3("Position", objects[i].position, -4.0f, 4.0f);
+                ImGui::SliderFloat3("Rotation (deg)", objects[i].rotation, -180.0f, 180.0f);
+                ImGui::SliderFloat3("Scale", objects[i].scale, 0.1f, 2.0f);
+                ImGui::ColorEdit3("Albedo", objects[i].albedo);
+                ImGui::ColorEdit3("Specular color", objects[i].specular);
+                ImGui::SliderFloat("Shininess", &objects[i].shininess, 1.0f, 128.0f);
+                const bool remove_object = objects.size() > 1 && ImGui::Button("Remove cone");
+                ImGui::PopID();
+                if (remove_object) {
+                    objects.erase(objects.begin() + i);
+                    break;
+                }
+            }
         }
         ImGui::PopID();
 
@@ -540,19 +615,23 @@ namespace application {
 
         const int point_count = static_cast<int>(point_lights.size());
         const int spot_count = static_cast<int>(spot_lights.size());
-        const int draw_count = 1 + (show_light_visualizers
+        const int object_count = static_cast<int>(objects.size());
+        const int draw_count = object_count + (show_light_visualizers
             ? point_count + spot_count + 1 : 0);
         for (int i = 0; i < draw_count; ++i) {
-            int model_index = 0;
-            if (i > 0 && i <= point_count) {
-                model_index = i;
+            int model_index = i;
+            const int visualizer_index = i - object_count;
+            if (i >= object_count && visualizer_index < point_count) {
+                model_index = graphics::internal::Context::OBJECT_CAPACITY + visualizer_index;
             }
-            else if (i > point_count && i <= point_count + spot_count) {
-                model_index = 1 + graphics::internal::Context::LIGHT_BUFFER_CAPACITY +
-                    i - 1 - point_count;
+            else if (i >= object_count && visualizer_index < point_count + spot_count) {
+                model_index = graphics::internal::Context::OBJECT_CAPACITY +
+                    graphics::internal::Context::LIGHT_BUFFER_CAPACITY +
+                    visualizer_index - point_count;
             }
-            else if (i > point_count + spot_count) {
-                model_index = 1 + 2 * graphics::internal::Context::LIGHT_BUFFER_CAPACITY;
+            else if (i >= object_count) {
+                model_index = graphics::internal::Context::OBJECT_CAPACITY +
+                    2 * graphics::internal::Context::LIGHT_BUFFER_CAPACITY;
             }
             const VkDescriptorSet sets[] = {
                 ctx.scene_descriptor_set,
@@ -560,7 +639,7 @@ namespace application {
             };
             vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 ctx.pipeline_layout, 0, 2, sets, 0, nullptr);
-            if (i > 0 && i <= point_count) {
+            if (i >= object_count && visualizer_index < point_count) {
                 vkCmdDrawIndexed(fd.command_buffer, ctx.sphere_index_count, 1,
                                  ctx.sphere_index_start, 0, 0);
             }
