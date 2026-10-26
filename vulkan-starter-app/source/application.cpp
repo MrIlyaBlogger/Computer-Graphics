@@ -124,7 +124,6 @@ namespace application {
 
         float delta_time = 0.0f;
         if (has_previous_update_time) {
-            // Avoid a large jump if the app is paused or dragged between windows.
             delta_time = static_cast<float>(std::clamp(time - previous_update_time, 0.0, 0.1));
         }
         previous_update_time = time;
