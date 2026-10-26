@@ -81,7 +81,7 @@ namespace {
     float camera_yaw = 0.0f;
     float camera_pitch = 0.0f;
     float camera_fov = 68.75f;
-    float camera_speed = 4.0f;
+    float camera_speed = 4.5f;
     float camera_mouse_sensitivity = 0.15f;
     double previous_update_time = 0.0;
     bool has_previous_update_time = false;
