@@ -1,6 +1,8 @@
 #include "application.hpp"
 #include "math.hpp"
 
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <algorithm>
 #include <cmath>
@@ -39,6 +41,13 @@ namespace {
     float camera_yaw = 0.0f;
     float camera_pitch = 0.0f;
     float camera_fov = 68.75f;
+    float camera_speed = 3.0f;
+    float camera_mouse_sensitivity = 0.15f;
+    double previous_update_time = 0.0;
+    bool has_previous_update_time = false;
+    double previous_mouse_x = 0.0;
+    double previous_mouse_y = 0.0;
+    bool has_previous_mouse_position = false;
     float directional_direction[3] = { -0.4f, -1.0f, -0.3f };
     float directional_color[3] = { 1.0f, 0.95f, 0.85f };
     float directional_intensity = 1.0f;
@@ -70,9 +79,76 @@ namespace application {
         vkQueueWaitIdle(context.graphics_queue);
     }
 
-    void update(double time) {
+    void update(double time, GLFWwindow* window) {
         auto& ctx = graphics::internal::context;
-        (void)time;
+
+        float delta_time = 0.0f;
+        if (has_previous_update_time) {
+            // Avoid a large jump if the app is paused or dragged between windows.
+            delta_time = static_cast<float>(std::clamp(time - previous_update_time, 0.0, 0.1));
+        }
+        previous_update_time = time;
+        has_previous_update_time = true;
+
+        if (window != nullptr) {
+            double mouse_x = 0.0;
+            double mouse_y = 0.0;
+            glfwGetCursorPos(window, &mouse_x, &mouse_y);
+
+            const bool rotate_camera =
+                glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS &&
+                !ImGui::GetIO().WantCaptureMouse;
+            if (rotate_camera && has_previous_mouse_position) {
+                camera_yaw += static_cast<float>(mouse_x - previous_mouse_x) * camera_mouse_sensitivity;
+                camera_pitch -= static_cast<float>(mouse_y - previous_mouse_y) * camera_mouse_sensitivity;
+                camera_pitch = std::clamp(camera_pitch, -89.0f, 89.0f);
+            }
+
+            previous_mouse_x = mouse_x;
+            previous_mouse_y = mouse_y;
+            has_previous_mouse_position = true;
+        }
+
+        if (window != nullptr && !ImGui::GetIO().WantCaptureKeyboard) {
+            const float yaw = camera_yaw * DEG_TO_RAD;
+            const float forward_x = std::sin(yaw);
+            const float forward_z = -std::cos(yaw);
+            const float right_x = std::cos(yaw);
+            const float right_z = std::sin(yaw);
+
+            float move_x = 0.0f;
+            float move_y = 0.0f;
+            float move_z = 0.0f;
+            if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+                move_x += forward_x;
+                move_z += forward_z;
+            }
+            if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+                move_x -= forward_x;
+                move_z -= forward_z;
+            }
+            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+                move_x += right_x;
+                move_z += right_z;
+            }
+            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+                move_x -= right_x;
+                move_z -= right_z;
+            }
+            if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) move_y += 1.0f;
+            if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
+                move_y -= 1.0f;
+            }
+
+            const float move_length = std::sqrt(move_x * move_x + move_y * move_y + move_z * move_z);
+            if (move_length > 0.0f) {
+                const float distance = camera_speed * delta_time / move_length;
+                camera_position[0] += move_x * distance;
+                camera_position[1] += move_y * distance;
+                camera_position[2] += move_z * distance;
+            }
+        }
 
         const float aspect = static_cast<float>(ctx.swapchain_extent.width) /
             static_cast<float>(ctx.swapchain_extent.height);
@@ -270,21 +346,80 @@ namespace application {
                         "Failed to flush spot light visualizer model buffer memory");
         }
 
+        float ray_length = std::sqrt(directional_direction[0] * directional_direction[0] +
+            directional_direction[1] * directional_direction[1] +
+            directional_direction[2] * directional_direction[2]);
+        if (ray_length < 0.001f) ray_length = 1.0f;
+        const float ray_direction[3] = {
+            directional_direction[0] / ray_length,
+            directional_direction[1] / ray_length,
+            directional_direction[2] / ray_length
+        };
+        const float arrow_world_up[3] = { 0.0f, 1.0f, 0.0f };
+        float axis_x[3] = {
+            ray_direction[1] * arrow_world_up[2] - ray_direction[2] * arrow_world_up[1],
+            ray_direction[2] * arrow_world_up[0] - ray_direction[0] * arrow_world_up[2],
+            ray_direction[0] * arrow_world_up[1] - ray_direction[1] * arrow_world_up[0]
+        };
+        float axis_x_length = std::sqrt(axis_x[0] * axis_x[0] + axis_x[1] * axis_x[1] + axis_x[2] * axis_x[2]);
+        if (axis_x_length < 0.001f) {
+            axis_x[0] = 1.0f; axis_x[1] = 0.0f; axis_x[2] = 0.0f;
+            axis_x_length = 1.0f;
+        }
+        for (float& v : axis_x) v /= axis_x_length;
+        const float axis_z[3] = {
+            axis_x[1] * ray_direction[2] - axis_x[2] * ray_direction[1],
+            axis_x[2] * ray_direction[0] - axis_x[0] * ray_direction[2],
+            axis_x[0] * ray_direction[1] - axis_x[1] * ray_direction[0]
+        };
+        constexpr float arrow_length = 1.8f;
+        const float arrow_center[3] = {
+            object.position[0] - ray_direction[0] * (arrow_length * 0.5f + 0.2f),
+            object.position[1] - ray_direction[1] * (arrow_length * 0.5f + 0.2f),
+            object.position[2] - ray_direction[2] * (arrow_length * 0.5f + 0.2f)
+        };
+        math::Mat4 arrow_rotation{}, arrow_scale{}, arrow_translation{}, arrow_model{};
+        math::identity(arrow_rotation);
+        for (int row = 0; row < 3; ++row) {
+            arrow_rotation[0][row] = axis_x[row];
+            arrow_rotation[1][row] = ray_direction[row];
+            arrow_rotation[2][row] = axis_z[row];
+        }
+        math::scale(0.11f, arrow_length * 0.5f, 0.11f, arrow_scale);
+        math::translate(arrow_center[0], arrow_center[1], arrow_center[2], arrow_translation);
+        math::multiply(arrow_rotation, arrow_scale, arrow_model);
+        math::multiply(arrow_translation, arrow_model, arrow_model);
+        const int directional_marker_index = 1 +
+            2 * graphics::internal::Context::LIGHT_BUFFER_CAPACITY;
+        auto* directional_marker = ctx.model_uniform_buffer_mapped[directional_marker_index];
+        std::memcpy(directional_marker->model, arrow_model, sizeof(arrow_model));
+        directional_marker->albedo[0] = 1.0f;
+        directional_marker->albedo[1] = 0.85f;
+        directional_marker->albedo[2] = 0.15f;
+        directional_marker->albedo[3] = 1.0f;
+        directional_marker->specular_shininess[0] = 0.0f;
+        directional_marker->specular_shininess[1] = 0.0f;
+        directional_marker->specular_shininess[2] = 0.0f;
+        directional_marker->specular_shininess[3] = 0.0f;
+        flushBuffer(ctx.model_uniform_buffer_allocations[directional_marker_index],
+                    "Failed to flush directional light visualizer model buffer memory");
+
         ImGui::Begin("Lab #2: Camera and lighting");
         ImGui::Checkbox("Show light visualizers", &show_light_visualizers);
 
         ImGui::PushID("Camera");
         if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::SliderFloat3("Position", camera_position, -10.0f, 10.0f);
-            ImGui::SliderFloat("Yaw (deg)", &camera_yaw, -180.0f, 180.0f);
-            ImGui::SliderFloat("Pitch (deg)", &camera_pitch, -89.0f, 89.0f);
             ImGui::SliderFloat("Field of view", &camera_fov, 25.0f, 110.0f);
+            ImGui::SliderFloat("Movement speed", &camera_speed, 0.5f, 10.0f, "%.1f units/s");
+            ImGui::SliderFloat("Mouse sensitivity", &camera_mouse_sensitivity, 0.01f, 1.0f, "%.2f deg/pixel");
+            ImGui::TextUnformatted("Move: WASD | Up: Space | Down: Shift");
+            ImGui::TextUnformatted("Look: hold left mouse button and drag");
         }
         ImGui::PopID();
 
         ImGui::PushID("Directional light");
         if (ImGui::CollapsingHeader("Directional light", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::SliderFloat3("Direction", directional_direction, -1.0f, 1.0f);
+            ImGui::SliderFloat3("Ray direction", directional_direction, -1.0f, 1.0f);
             ImGui::ColorEdit3("Color", directional_color);
             ImGui::SliderFloat("Intensity", &directional_intensity, 0.0f, 5.0f);
             ImGui::ColorEdit3("Ambient light", ambient_color);
@@ -329,9 +464,18 @@ namespace application {
                 ImGui::SliderFloat3("Direction", spot_lights[i].direction, -1.0f, 1.0f);
                 ImGui::ColorEdit3("Color", spot_lights[i].color);
                 ImGui::SliderFloat("Intensity", &spot_lights[i].intensity, 0.0f, 80.0f);
-                ImGui::SliderFloat("Inner angle", &spot_lights[i].inner_angle, 1.0f, 85.0f);
-                ImGui::SliderFloat("Outer angle", &spot_lights[i].outer_angle,
-                                   spot_lights[i].inner_angle, 89.0f);
+                auto& light = spot_lights[i];
+                light.inner_angle = std::clamp(light.inner_angle, 1.0f, 89.0f);
+                light.outer_angle = std::clamp(light.outer_angle, 1.0f, 89.0f);
+                if (light.inner_angle > light.outer_angle) {
+                    light.inner_angle = light.outer_angle;
+                }
+                ImGui::SliderFloat("Inner angle", &light.inner_angle,
+                                   1.0f, light.outer_angle, "%.1f deg");
+                ImGui::SetItemTooltip("The inner angle cannot exceed the current outer angle.");
+                ImGui::SliderFloat("Outer angle", &light.outer_angle,
+                                   light.inner_angle, 89.0f, "%.1f deg");
+                ImGui::SetItemTooltip("The outer angle cannot be smaller than the current inner angle.");
                 if (ImGui::Button("Remove spot light")) {
                     spot_lights.erase(spot_lights.begin() + i);
                     ImGui::PopID();
@@ -394,13 +538,21 @@ namespace application {
         vkCmdBindVertexBuffers(fd.command_buffer, 0, 1, &ctx.vertex_buffer, offsets);
         vkCmdBindIndexBuffer(fd.command_buffer, ctx.index_buffer, 0, VK_INDEX_TYPE_UINT32);
 
+        const int point_count = static_cast<int>(point_lights.size());
+        const int spot_count = static_cast<int>(spot_lights.size());
         const int draw_count = 1 + (show_light_visualizers
-            ? static_cast<int>(point_lights.size() + spot_lights.size()) : 0);
+            ? point_count + spot_count + 1 : 0);
         for (int i = 0; i < draw_count; ++i) {
-            int model_index = i;
-            if (i > 1 + static_cast<int>(point_lights.size()) - 1) {
+            int model_index = 0;
+            if (i > 0 && i <= point_count) {
+                model_index = i;
+            }
+            else if (i > point_count && i <= point_count + spot_count) {
                 model_index = 1 + graphics::internal::Context::LIGHT_BUFFER_CAPACITY +
-                    i - 1 - static_cast<int>(point_lights.size());
+                    i - 1 - point_count;
+            }
+            else if (i > point_count + spot_count) {
+                model_index = 1 + 2 * graphics::internal::Context::LIGHT_BUFFER_CAPACITY;
             }
             const VkDescriptorSet sets[] = {
                 ctx.scene_descriptor_set,
@@ -408,7 +560,7 @@ namespace application {
             };
             vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 ctx.pipeline_layout, 0, 2, sets, 0, nullptr);
-            if (i > 0 && i <= static_cast<int>(point_lights.size())) {
+            if (i > 0 && i <= point_count) {
                 vkCmdDrawIndexed(fd.command_buffer, ctx.sphere_index_count, 1,
                                  ctx.sphere_index_start, 0, 0);
             }

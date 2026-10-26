@@ -84,7 +84,7 @@ int main() {
 		ImGui_ImplGlfw_NewFrame();
 
 		ImGui::NewFrame();
-		application::update(time);
+		application::update(time, glfw_window);
 		ImGui::Render();
 
 		application::render(fd);

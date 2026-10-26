@@ -71,7 +71,7 @@ struct Context {
     VmaAllocation spot_light_buffer_allocation;
     SpotLight* spot_light_buffer_mapped;
     static constexpr uint32_t LIGHT_BUFFER_CAPACITY = 32;
-    static constexpr int OBJECT_COUNT = 1 + 2 * LIGHT_BUFFER_CAPACITY;
+    static constexpr int OBJECT_COUNT = 2 + 2 * LIGHT_BUFFER_CAPACITY;
     VkDescriptorSetLayout model_set_layout;
     VkBuffer model_uniform_buffers[OBJECT_COUNT];
     VmaAllocation model_uniform_buffer_allocations[OBJECT_COUNT];
