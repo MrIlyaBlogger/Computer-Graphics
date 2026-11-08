@@ -12,11 +12,14 @@
 
 namespace {
 
+    using namespace graphics::internal;
+
     struct ObjectState {
         float position[3] = { 0.0f, 0.0f, 0.0f };
         float rotation[3] = { 0.0f, 0.0f, 0.0f };
         float scale[3] = { 0.7f, 0.7f, 0.7f };
-        float albedo[3] = { 0.55f, 0.7f, 1.0f };
+        int material = CONE_MATERIAL;
+        bool animated_sampling = false;
         float specular[3] = { 1.0f, 1.0f, 1.0f };
         float shininess = 32.0f;
     };
@@ -38,48 +41,51 @@ namespace {
 
     std::vector<ObjectState> objects = [] {
         std::vector<ObjectState> result(5);
-        result[0].position[1] = -0.1f;
+        result[0].position[1] = -0.55f;
+        result[0].rotation[1] = 90.0f;
         result[0].scale[0] = result[0].scale[1] = result[0].scale[2] = 0.75f;
-        result[0].albedo[0] = 0.25f;
-        result[0].albedo[1] = 0.65f;
-        result[0].albedo[2] = 1.0f;
 
         result[1].position[0] = -1.8f;
-        result[1].position[1] = 0.1f;
+        result[1].position[1] = -0.82f;
+        result[1].material = CONE_ALT_MATERIAL;
+        result[1].animated_sampling = true;
         result[1].scale[0] = result[1].scale[1] = result[1].scale[2] = 0.48f;
         result[1].rotation[1] = -25.0f;
-        result[1].albedo[0] = 1.0f;
-        result[1].albedo[1] = 0.35f;
-        result[1].albedo[2] = 0.2f;
 
         result[2].position[0] = 1.8f;
-        result[2].position[1] = 0.1f;
+        result[2].position[1] = -0.75f;
         result[2].scale[0] = result[2].scale[1] = result[2].scale[2] = 0.55f;
-        result[2].rotation[1] = 25.0f;
-        result[2].albedo[0] = 0.35f;
-        result[2].albedo[1] = 1.0f;
-        result[2].albedo[2] = 0.4f;
+        result[2].rotation[1] = 74.0f;
 
-        result[3].position[1] = 1.5f;
+        result[3].position[1] = 1.05f;
+        result[3].material = CONE_ALT_MATERIAL;
         result[3].position[2] = -0.7f;
         result[3].scale[0] = result[3].scale[1] = result[3].scale[2] = 0.42f;
         result[3].rotation[2] = 15.0f;
-        result[3].albedo[0] = 1.0f;
-        result[3].albedo[1] = 0.8f;
-        result[3].albedo[2] = 0.2f;
 
-        result[4].position[1] = -1.5f;
-        result[4].position[2] = -0.7f;
+        result[4].position[0] = 0.85f;
+        result[4].position[1] = -0.8f;
+        result[4].position[2] = 1.4f;
         result[4].scale[0] = result[4].scale[1] = result[4].scale[2] = 0.42f;
+        result[4].rotation[1] = 81.0f;
         result[4].rotation[2] = -15.0f;
-        result[4].albedo[0] = 0.9f;
-        result[4].albedo[1] = 0.35f;
-        result[4].albedo[2] = 0.8f;
         return result;
     }();
-    float camera_position[3] = { 0.0f, 0.0f, 6.0f };
+    const char* room_names[] = { "Floor", "Back wall", "Side wall" };
+    ObjectState room_surfaces[Context::ROOM_SURFACE_COUNT] = {
+        { .position = { 0.0f, -1.3f, 0.0f }, .scale = { 4.0f, 1.0f, 5.0f },
+          .material = FLOOR_MATERIAL },
+        { .position = { 0.0f, 0.9f, -5.0f }, .rotation = { 90.0f, 0.0f, 0.0f },
+          .scale = { 4.0f, 1.0f, 2.2f }, .material = WALL_MATERIAL },
+        { .position = { -4.0f, 0.9f, 0.0f }, .rotation = { 0.0f, 0.0f, -90.0f },
+          .scale = { 2.2f, 1.0f, 5.0f }, .material = WALL_MATERIAL },
+    };
+    float effect_time = 0.0f;
+    bool emissive_preview = false;
+
+    float camera_position[3] = { 0.1f, 0.75f, 6.0f };
     float camera_yaw = 0.0f;
-    float camera_pitch = 0.0f;
+    float camera_pitch = -10.0f;
     float camera_fov = 68.75f;
     float camera_speed = 4.5f;
     float camera_mouse_sensitivity = 0.15f;
@@ -101,6 +107,12 @@ namespace {
     constexpr float PI_F = 3.14159265358979f;
     constexpr float DEG_TO_RAD = PI_F / 180.0f;
 
+    void textureCombo(int& material) {
+        ImGui::Combo("Texture", &material, material_names, MATERIAL_COUNT);
+        if (!context.material_has_albedo[material])
+            ImGui::TextDisabled("Albedo PNG unavailable");
+    }
+
     void flushBuffer(VmaAllocation allocation, const char* message) {
         if (vmaFlushAllocation(graphics::internal::context.allocator, allocation,
                                0, VK_WHOLE_SIZE) != VK_SUCCESS) {
@@ -115,13 +127,143 @@ namespace application {
     bool initialize() { return true; }
 
     void shutdown() {
-        auto& context = graphics::internal::context;
-        vkQueueWaitIdle(context.graphics_queue);
+        const auto& ctx = graphics::internal::context;
+        vkQueueWaitIdle(ctx.graphics_queue);
     }
 
     void update(double time, GLFWwindow* window) {
         auto& ctx = graphics::internal::context;
 
+        ImGui::Begin("Lab #3: Texture mapping");
+        ImGui::Checkbox("Show light visualizers", &show_light_visualizers);
+        ImGui::Checkbox("Emissive preview (lights off)", &emissive_preview);
+        if (!ctx.cone_has_specular || !ctx.cone_has_emissive)
+            ImGui::TextDisabled("Missing cone masks use a black pixel.");
+
+        ImGui::PushID("Camera");
+        if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::SliderFloat("Field of view", &camera_fov, 25.0f, 110.0f);
+            ImGui::SliderFloat("Movement speed", &camera_speed, 0.5f, 10.0f, "%.1f units/s");
+            ImGui::SliderFloat("Mouse sensitivity", &camera_mouse_sensitivity, 0.01f, 1.0f, "%.2f deg/pixel");
+            ImGui::TextUnformatted("Move: WASD | Up: Space | Down: Shift");
+            ImGui::TextUnformatted("Look: hold left mouse button and drag");
+        }
+        ImGui::PopID();
+
+        ImGui::PushID("Directional light");
+        if (ImGui::CollapsingHeader("Directional light", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::SliderFloat3("Ray direction", directional_direction, -1.0f, 1.0f);
+            ImGui::ColorEdit3("Color", directional_color);
+            ImGui::SliderFloat("Intensity", &directional_intensity, 0.0f, 5.0f);
+            ImGui::ColorEdit3("Ambient light", ambient_color);
+        }
+        ImGui::PopID();
+
+        ImGui::PushID("Point lights");
+        if (ImGui::CollapsingHeader("Point lights", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (point_lights.size() < graphics::internal::Context::LIGHT_BUFFER_CAPACITY &&
+                ImGui::Button("Add point light")) {
+                point_lights.push_back({ { 0.0f, 2.0f, 2.0f }, 8.0f, { 0.3f, 0.6f, 1.0f } });
+            }
+            for (size_t i = 0; i < point_lights.size(); ++i) {
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::Separator();
+                ImGui::Text("Point light %d", static_cast<int>(i + 1));
+                ImGui::SliderFloat3("Position", point_lights[i].position, -8.0f, 8.0f);
+                ImGui::ColorEdit3("Color", point_lights[i].color);
+                ImGui::SliderFloat("Intensity", &point_lights[i].intensity, 0.0f, 40.0f);
+                if (ImGui::Button("Remove point light")) {
+                    point_lights.erase(point_lights.begin() + i);
+                    ImGui::PopID();
+                    break;
+                }
+                ImGui::PopID();
+            }
+        }
+        ImGui::PopID();
+
+        ImGui::PushID("Spot lights");
+        if (ImGui::CollapsingHeader("Spot lights")) {
+            if (spot_lights.size() < graphics::internal::Context::LIGHT_BUFFER_CAPACITY &&
+                ImGui::Button("Add spot light")) {
+                spot_lights.push_back({ { 0.0f, 3.0f, 2.0f }, 20.0f,
+                    { 0.0f, -1.0f, -0.5f }, 18.0f, 28.0f, { 1.0f, 0.9f, 0.55f } });
+            }
+            for (size_t i = 0; i < spot_lights.size(); ++i) {
+                ImGui::PushID(static_cast<int>(1000 + i));
+                ImGui::Separator();
+                ImGui::Text("Spot light %d", static_cast<int>(i + 1));
+                ImGui::SliderFloat3("Position", spot_lights[i].position, -8.0f, 8.0f);
+                ImGui::SliderFloat3("Direction", spot_lights[i].direction, -1.0f, 1.0f);
+                ImGui::ColorEdit3("Color", spot_lights[i].color);
+                ImGui::SliderFloat("Intensity", &spot_lights[i].intensity, 0.0f, 80.0f);
+                auto& light = spot_lights[i];
+                light.inner_angle = std::clamp(light.inner_angle, 1.0f, 89.0f);
+                light.outer_angle = std::clamp(light.outer_angle, 1.0f, 89.0f);
+                if (light.inner_angle > light.outer_angle) {
+                    light.inner_angle = light.outer_angle;
+                }
+                ImGui::SliderFloat("Inner angle", &light.inner_angle,
+                                   1.0f, light.outer_angle, "%.1f deg");
+                ImGui::SetItemTooltip("The inner angle cannot exceed the current outer angle.");
+                ImGui::SliderFloat("Outer angle", &light.outer_angle,
+                                   light.inner_angle, 89.0f, "%.1f deg");
+                ImGui::SetItemTooltip("The outer angle cannot be smaller than the current inner angle.");
+                if (ImGui::Button("Remove spot light")) {
+                    spot_lights.erase(spot_lights.begin() + i);
+                    ImGui::PopID();
+                    break;
+                }
+                ImGui::PopID();
+            }
+        }
+        ImGui::PopID();
+
+        ImGui::PushID("Objects");
+        if (ImGui::CollapsingHeader("Objects", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (objects.size() < graphics::internal::Context::OBJECT_CAPACITY &&
+                ImGui::Button("Add cone")) {
+                ObjectState object{};
+                const float angle = static_cast<float>(objects.size()) * 2.0f * PI_F / 6.0f;
+                object.position[0] = std::cos(angle) * 2.4f;
+                object.position[2] = -0.8f;
+                object.scale[0] = object.scale[1] = object.scale[2] = 0.42f;
+                object.position[1] = -0.88f;
+                objects.push_back(object);
+            }
+
+            for (size_t i = 0; i < objects.size(); ++i) {
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::Separator();
+                ImGui::Text("Cone %d", static_cast<int>(i + 1));
+                ImGui::SliderFloat3("Position", objects[i].position, -4.0f, 4.0f);
+                ImGui::SliderFloat3("Rotation (deg)", objects[i].rotation, -180.0f, 180.0f);
+                ImGui::SliderFloat3("Scale", objects[i].scale, 0.1f, 2.0f);
+                textureCombo(objects[i].material);
+                ImGui::Checkbox("Animated sampling", &objects[i].animated_sampling);
+                ImGui::ColorEdit3("Specular color", objects[i].specular);
+                ImGui::SliderFloat("Shininess", &objects[i].shininess, 1.0f, 128.0f);
+                const bool remove_object = objects.size() > 1 && ImGui::Button("Remove cone");
+                ImGui::PopID();
+                if (remove_object) {
+                    objects.erase(objects.begin() + i);
+                    break;
+                }
+            }
+        }
+        ImGui::PopID();
+
+        if (ImGui::CollapsingHeader("Room")) {
+            for (int i = 0; i < Context::ROOM_SURFACE_COUNT; ++i) {
+                ImGui::PushID(room_names[i]);
+                ImGui::TextUnformatted(room_names[i]);
+                textureCombo(room_surfaces[i].material);
+                ImGui::PopID();
+            }
+        }
+        ImGui::End();
+
+        effect_time = static_cast<float>(time);
         float delta_time = 0.0f;
         if (has_previous_update_time) {
             delta_time = static_cast<float>(std::clamp(time - previous_update_time, 0.0, 0.1));
@@ -226,13 +368,13 @@ namespace application {
         scene->directional_color[0] = directional_color[0];
         scene->directional_color[1] = directional_color[1];
         scene->directional_color[2] = directional_color[2];
-        scene->directional_color[3] = directional_intensity;
-        scene->ambient_color[0] = ambient_color[0];
-        scene->ambient_color[1] = ambient_color[1];
-        scene->ambient_color[2] = ambient_color[2];
+        scene->directional_color[3] = emissive_preview ? 0.0f : directional_intensity;
+        scene->ambient_color[0] = emissive_preview ? 0.0f : ambient_color[0];
+        scene->ambient_color[1] = emissive_preview ? 0.0f : ambient_color[1];
+        scene->ambient_color[2] = emissive_preview ? 0.0f : ambient_color[2];
         scene->ambient_color[3] = 1.0f;
-        scene->light_counts[0] = static_cast<float>(point_lights.size());
-        scene->light_counts[1] = static_cast<float>(spot_lights.size());
+        scene->light_counts[0] = emissive_preview ? 0.0f : static_cast<float>(point_lights.size());
+        scene->light_counts[1] = emissive_preview ? 0.0f : static_cast<float>(spot_lights.size());
         scene->light_counts[2] = scene->light_counts[3] = 0.0f;
         flushBuffer(ctx.scene_uniform_buffer_allocation,
                     "Failed to flush scene uniform buffer memory");
@@ -275,8 +417,7 @@ namespace application {
         flushBuffer(ctx.spot_light_buffer_allocation,
                     "Failed to flush spot light storage buffer memory");
 
-        for (size_t i = 0; i < objects.size(); ++i) {
-            const auto& object = objects[i];
+        const auto writeModel = [&ctx](size_t i, const ObjectState& object) {
             math::Mat4 mT{}, mRx{}, mRy{}, mRz{}, mS{}, model{};
             math::translate(object.position[0], object.position[1], object.position[2], mT);
             math::rotateX(object.rotation[0] * DEG_TO_RAD, mRx);
@@ -290,17 +431,16 @@ namespace application {
 
             auto* model_uniform = ctx.model_uniform_buffer_mapped[i];
             std::memcpy(model_uniform->model, model, sizeof(model));
-            model_uniform->albedo[0] = object.albedo[0];
-            model_uniform->albedo[1] = object.albedo[1];
-            model_uniform->albedo[2] = object.albedo[2];
             model_uniform->albedo[3] = 1.0f;
             model_uniform->specular_shininess[0] = object.specular[0];
             model_uniform->specular_shininess[1] = object.specular[1];
             model_uniform->specular_shininess[2] = object.specular[2];
             model_uniform->specular_shininess[3] = object.shininess;
-            flushBuffer(ctx.model_uniform_buffer_allocations[i],
-                        "Failed to flush model uniform buffer memory");
-        }
+        };
+        for (size_t i = 0; i < objects.size(); ++i)
+            writeModel(i, objects[i]);
+        for (int i = 0; i < Context::ROOM_SURFACE_COUNT; ++i)
+            writeModel(Context::OBJECT_CAPACITY + i, room_surfaces[i]);
 
         const auto writeLightMarker = [&ctx](int index, const float position[3],
                                              const float color[3], float radius) {
@@ -318,11 +458,10 @@ namespace application {
             marker->specular_shininess[1] = 0.0f;
             marker->specular_shininess[2] = 0.0f;
             marker->specular_shininess[3] = 0.0f;
-            flushBuffer(ctx.model_uniform_buffer_allocations[index],
-                        "Failed to flush light visualizer model buffer memory");
+
         };
         for (size_t i = 0; i < point_lights.size(); ++i) {
-            writeLightMarker(graphics::internal::Context::OBJECT_CAPACITY + static_cast<int>(i),
+            writeLightMarker(Context::MARKER_START + static_cast<int>(i),
                              point_lights[i].position,
                              point_lights[i].color, 0.14f);
         }
@@ -373,7 +512,7 @@ namespace application {
             math::translate(center[0], center[1], center[2], marker_translation);
             math::multiply(rotation, marker_scale, marker_model);
             math::multiply(marker_translation, marker_model, marker_model);
-            const int marker_index = graphics::internal::Context::OBJECT_CAPACITY +
+            const int marker_index = Context::MARKER_START +
                 graphics::internal::Context::LIGHT_BUFFER_CAPACITY +
                 static_cast<int>(i);
             auto* marker = ctx.model_uniform_buffer_mapped[marker_index];
@@ -386,8 +525,7 @@ namespace application {
             marker->specular_shininess[1] = 0.0f;
             marker->specular_shininess[2] = 0.0f;
             marker->specular_shininess[3] = 0.0f;
-            flushBuffer(ctx.model_uniform_buffer_allocations[marker_index],
-                        "Failed to flush spot light visualizer model buffer memory");
+
         }
 
         float ray_length = std::sqrt(directional_direction[0] * directional_direction[0] +
@@ -433,7 +571,7 @@ namespace application {
         math::translate(arrow_center[0], arrow_center[1], arrow_center[2], arrow_translation);
         math::multiply(arrow_rotation, arrow_scale, arrow_model);
         math::multiply(arrow_translation, arrow_model, arrow_model);
-        const int directional_marker_index = graphics::internal::Context::OBJECT_CAPACITY +
+        const int directional_marker_index = Context::MARKER_START +
             2 * graphics::internal::Context::LIGHT_BUFFER_CAPACITY;
         auto* directional_marker = ctx.model_uniform_buffer_mapped[directional_marker_index];
         std::memcpy(directional_marker->model, arrow_model, sizeof(arrow_model));
@@ -445,133 +583,10 @@ namespace application {
         directional_marker->specular_shininess[1] = 0.0f;
         directional_marker->specular_shininess[2] = 0.0f;
         directional_marker->specular_shininess[3] = 0.0f;
-        flushBuffer(ctx.model_uniform_buffer_allocations[directional_marker_index],
-                    "Failed to flush directional light visualizer model buffer memory");
 
-        ImGui::Begin("Lab #2: Camera and lighting");
-        ImGui::Checkbox("Show light visualizers", &show_light_visualizers);
 
-        ImGui::PushID("Camera");
-        if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::SliderFloat("Field of view", &camera_fov, 25.0f, 110.0f);
-            ImGui::SliderFloat("Movement speed", &camera_speed, 0.5f, 10.0f, "%.1f units/s");
-            ImGui::SliderFloat("Mouse sensitivity", &camera_mouse_sensitivity, 0.01f, 1.0f, "%.2f deg/pixel");
-            ImGui::TextUnformatted("Move: WASD | Up: Space | Down: Shift");
-            ImGui::TextUnformatted("Look: hold left mouse button and drag");
-        }
-        ImGui::PopID();
-
-        ImGui::PushID("Directional light");
-        if (ImGui::CollapsingHeader("Directional light", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::SliderFloat3("Ray direction", directional_direction, -1.0f, 1.0f);
-            ImGui::ColorEdit3("Color", directional_color);
-            ImGui::SliderFloat("Intensity", &directional_intensity, 0.0f, 5.0f);
-            ImGui::ColorEdit3("Ambient light", ambient_color);
-        }
-        ImGui::PopID();
-
-        ImGui::PushID("Point lights");
-        if (ImGui::CollapsingHeader("Point lights", ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (point_lights.size() < graphics::internal::Context::LIGHT_BUFFER_CAPACITY &&
-                ImGui::Button("Add point light")) {
-                point_lights.push_back({ { 0.0f, 2.0f, 2.0f }, 8.0f, { 0.3f, 0.6f, 1.0f } });
-            }
-            for (size_t i = 0; i < point_lights.size(); ++i) {
-                ImGui::PushID(static_cast<int>(i));
-                ImGui::Separator();
-                ImGui::Text("Point light %d", static_cast<int>(i + 1));
-                ImGui::SliderFloat3("Position", point_lights[i].position, -8.0f, 8.0f);
-                ImGui::ColorEdit3("Color", point_lights[i].color);
-                ImGui::SliderFloat("Intensity", &point_lights[i].intensity, 0.0f, 40.0f);
-                if (ImGui::Button("Remove point light")) {
-                    point_lights.erase(point_lights.begin() + i);
-                    ImGui::PopID();
-                    break;
-                }
-                ImGui::PopID();
-            }
-        }
-        ImGui::PopID();
-
-        ImGui::PushID("Spot lights");
-        if (ImGui::CollapsingHeader("Spot lights")) {
-            if (spot_lights.size() < graphics::internal::Context::LIGHT_BUFFER_CAPACITY &&
-                ImGui::Button("Add spot light")) {
-                spot_lights.push_back({ { 0.0f, 3.0f, 2.0f }, 20.0f,
-                    { 0.0f, -1.0f, -0.5f }, 18.0f, 28.0f, { 1.0f, 0.9f, 0.55f } });
-            }
-            for (size_t i = 0; i < spot_lights.size(); ++i) {
-                ImGui::PushID(static_cast<int>(1000 + i));
-                ImGui::Separator();
-                ImGui::Text("Spot light %d", static_cast<int>(i + 1));
-                ImGui::SliderFloat3("Position", spot_lights[i].position, -8.0f, 8.0f);
-                ImGui::SliderFloat3("Direction", spot_lights[i].direction, -1.0f, 1.0f);
-                ImGui::ColorEdit3("Color", spot_lights[i].color);
-                ImGui::SliderFloat("Intensity", &spot_lights[i].intensity, 0.0f, 80.0f);
-                auto& light = spot_lights[i];
-                light.inner_angle = std::clamp(light.inner_angle, 1.0f, 89.0f);
-                light.outer_angle = std::clamp(light.outer_angle, 1.0f, 89.0f);
-                if (light.inner_angle > light.outer_angle) {
-                    light.inner_angle = light.outer_angle;
-                }
-                ImGui::SliderFloat("Inner angle", &light.inner_angle,
-                                   1.0f, light.outer_angle, "%.1f deg");
-                ImGui::SetItemTooltip("The inner angle cannot exceed the current outer angle.");
-                ImGui::SliderFloat("Outer angle", &light.outer_angle,
-                                   light.inner_angle, 89.0f, "%.1f deg");
-                ImGui::SetItemTooltip("The outer angle cannot be smaller than the current inner angle.");
-                if (ImGui::Button("Remove spot light")) {
-                    spot_lights.erase(spot_lights.begin() + i);
-                    ImGui::PopID();
-                    break;
-                }
-                ImGui::PopID();
-            }
-        }
-        ImGui::PopID();
-
-        ImGui::PushID("Objects");
-        if (ImGui::CollapsingHeader("Objects", ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (objects.size() < graphics::internal::Context::OBJECT_CAPACITY &&
-                ImGui::Button("Add cone")) {
-                ObjectState object{};
-                const float angle = static_cast<float>(objects.size()) * 2.0f * PI_F / 6.0f;
-                object.position[0] = std::cos(angle) * 2.4f;
-                object.position[1] = std::sin(angle) * 1.6f;
-                object.position[2] = -0.8f;
-                object.scale[0] = object.scale[1] = object.scale[2] = 0.42f;
-                const float colors[][3] = {
-                    { 0.25f, 0.75f, 1.0f }, { 1.0f, 0.35f, 0.2f },
-                    { 0.35f, 1.0f, 0.45f }, { 1.0f, 0.8f, 0.2f },
-                    { 0.9f, 0.35f, 0.8f }, { 0.45f, 0.5f, 1.0f },
-                    { 0.2f, 1.0f, 0.9f }, { 1.0f, 0.5f, 0.15f }
-                };
-                const size_t color_index = objects.size() % (sizeof(colors) / sizeof(colors[0]));
-                std::copy_n(colors[color_index], 3, object.albedo);
-                objects.push_back(object);
-            }
-
-            for (size_t i = 0; i < objects.size(); ++i) {
-                ImGui::PushID(static_cast<int>(i));
-                ImGui::Separator();
-                ImGui::Text("Cone %d", static_cast<int>(i + 1));
-                ImGui::SliderFloat3("Position", objects[i].position, -4.0f, 4.0f);
-                ImGui::SliderFloat3("Rotation (deg)", objects[i].rotation, -180.0f, 180.0f);
-                ImGui::SliderFloat3("Scale", objects[i].scale, 0.1f, 2.0f);
-                ImGui::ColorEdit3("Albedo", objects[i].albedo);
-                ImGui::ColorEdit3("Specular color", objects[i].specular);
-                ImGui::SliderFloat("Shininess", &objects[i].shininess, 1.0f, 128.0f);
-                const bool remove_object = objects.size() > 1 && ImGui::Button("Remove cone");
-                ImGui::PopID();
-                if (remove_object) {
-                    objects.erase(objects.begin() + i);
-                    break;
-                }
-            }
-        }
-        ImGui::PopID();
-
-        ImGui::End();
+        flushBuffer(ctx.model_uniform_buffer_allocation,
+                    "Failed to flush dynamic model uniform buffer memory");
     }
 
     void render(const graphics::internal::FrameData& fd) {
@@ -612,39 +627,36 @@ namespace application {
         vkCmdBindVertexBuffers(fd.command_buffer, 0, 1, &ctx.vertex_buffer, offsets);
         vkCmdBindIndexBuffer(fd.command_buffer, ctx.index_buffer, 0, VK_INDEX_TYPE_UINT32);
 
-        const int point_count = static_cast<int>(point_lights.size());
-        const int spot_count = static_cast<int>(spot_lights.size());
-        const int object_count = static_cast<int>(objects.size());
-        const int draw_count = object_count + (show_light_visualizers
-            ? point_count + spot_count + 1 : 0);
-        for (int i = 0; i < draw_count; ++i) {
-            int model_index = i;
-            const int visualizer_index = i - object_count;
-            if (i >= object_count && visualizer_index < point_count) {
-                model_index = graphics::internal::Context::OBJECT_CAPACITY + visualizer_index;
-            }
-            else if (i >= object_count && visualizer_index < point_count + spot_count) {
-                model_index = graphics::internal::Context::OBJECT_CAPACITY +
-                    graphics::internal::Context::LIGHT_BUFFER_CAPACITY +
-                    visualizer_index - point_count;
-            }
-            else if (i >= object_count) {
-                model_index = graphics::internal::Context::OBJECT_CAPACITY +
-                    2 * graphics::internal::Context::LIGHT_BUFFER_CAPACITY;
-            }
-            const VkDescriptorSet sets[] = {
-                ctx.scene_descriptor_set,
-                ctx.model_descriptor_sets[model_index],
-            };
+        vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            ctx.pipeline_layout, 0, 1, &ctx.scene_descriptor_set, 0, nullptr);
+
+        const auto drawModel = [&](int model_index, int material, bool animated_sampling,
+                                   uint32_t first_index, uint32_t index_count) {
+            const uint32_t dynamic_offset = static_cast<uint32_t>(model_index) * ctx.model_uniform_stride;
             vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                ctx.pipeline_layout, 0, 2, sets, 0, nullptr);
-            if (i >= object_count && visualizer_index < point_count) {
-                vkCmdDrawIndexed(fd.command_buffer, ctx.sphere_index_count, 1,
-                                 ctx.sphere_index_start, 0, 0);
-            }
-            else {
-                vkCmdDrawIndexed(fd.command_buffer, ctx.index_count, 1, 0, 0, 0);
-            }
+                ctx.pipeline_layout, 1, 1, &ctx.material_descriptor_sets[material], 1, &dynamic_offset);
+            const TextureEffect effect = { effect_time, animated_sampling ? 1u : 0u };
+            vkCmdPushConstants(fd.command_buffer, ctx.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                0, sizeof(effect), &effect);
+            vkCmdDrawIndexed(fd.command_buffer, index_count, 1, first_index, 0, 0);
+        };
+
+        for (int i = 0; i < static_cast<int>(objects.size()); ++i)
+            drawModel(i, objects[i].material, objects[i].animated_sampling, 0, ctx.index_count);
+        const uint32_t room_first_indices[] = {
+            ctx.floor_index_start, ctx.back_wall_index_start, ctx.side_wall_index_start,
+        };
+        for (int i = 0; i < Context::ROOM_SURFACE_COUNT; ++i)
+            drawModel(Context::OBJECT_CAPACITY + i, room_surfaces[i].material, false, room_first_indices[i], 6);
+
+        if (show_light_visualizers && !emissive_preview) {
+            for (int i = 0; i < static_cast<int>(point_lights.size()); ++i)
+                drawModel(Context::MARKER_START + i, CONE_MATERIAL, false, ctx.sphere_index_start, ctx.sphere_index_count);
+            for (int i = 0; i < static_cast<int>(spot_lights.size()); ++i)
+                drawModel(Context::MARKER_START + Context::LIGHT_BUFFER_CAPACITY + i,
+                    CONE_MATERIAL, false, 0, ctx.index_count);
+            drawModel(Context::MARKER_START + 2 * Context::LIGHT_BUFFER_CAPACITY,
+                CONE_MATERIAL, false, 0, ctx.index_count);
         }
 
         vkCmdEndRenderPass(fd.command_buffer);

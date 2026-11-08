@@ -3,7 +3,14 @@ include(FetchContent)
 
 project(vulkan-starter-app LANGUAGES C CXX)
 
-add_executable(${PROJECT_NAME} source/main.cpp source/graphics_internal.cpp source/application.cpp)
+add_executable(${PROJECT_NAME}
+	source/main.cpp
+	source/graphics_internal.cpp
+	source/application.cpp
+	third_party/lodepng/lodepng.cpp
+)
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE third_party/lodepng)
+target_compile_definitions(${PROJECT_NAME} PRIVATE LAB_TEXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/textures")
 
 if(LINUX)
 	target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wno-missing-field-initializers)

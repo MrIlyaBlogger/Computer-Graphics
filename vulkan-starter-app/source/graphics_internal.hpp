@@ -26,6 +26,21 @@ struct ModelUniform {
     float specular_shininess[4];
 };
 
+struct Texture {
+    VkImage image;
+    VmaAllocation allocation;
+    VkImageView view;
+};
+
+enum MaterialIndex { CONE_MATERIAL, CONE_ALT_MATERIAL, FLOOR_MATERIAL, WALL_MATERIAL, MATERIAL_COUNT };
+inline constexpr const char* material_names[] = { "Cone", "Cone alternate", "Floor", "Wall" };
+
+struct TextureEffect {
+    float time;
+    uint32_t enabled;
+};
+static_assert(sizeof(TextureEffect) == 8);
+
 struct PointLight {
     float position_intensity[4];
     float color[4];
@@ -57,6 +72,9 @@ struct Context {
     uint32_t index_count;
     uint32_t sphere_index_start;
     uint32_t sphere_index_count;
+    uint32_t floor_index_start;
+    uint32_t back_wall_index_start;
+    uint32_t side_wall_index_start;
 
     VkDescriptorSetLayout scene_set_layout;
     VkBuffer scene_uniform_buffer;
@@ -72,12 +90,21 @@ struct Context {
     SpotLight* spot_light_buffer_mapped;
     static constexpr uint32_t LIGHT_BUFFER_CAPACITY = 32;
     static constexpr uint32_t OBJECT_CAPACITY = 8;
-    static constexpr int OBJECT_COUNT = OBJECT_CAPACITY + 2 * LIGHT_BUFFER_CAPACITY + 1;
+    static constexpr int ROOM_SURFACE_COUNT = 3;
+    static constexpr int MARKER_START = OBJECT_CAPACITY + ROOM_SURFACE_COUNT;
+    static constexpr int OBJECT_COUNT = MARKER_START + 2 * LIGHT_BUFFER_CAPACITY + 1;
     VkDescriptorSetLayout model_set_layout;
-    VkBuffer model_uniform_buffers[OBJECT_COUNT];
-    VmaAllocation model_uniform_buffer_allocations[OBJECT_COUNT];
+    VkBuffer model_uniform_buffer;
+    VmaAllocation model_uniform_buffer_allocation;
+    uint32_t model_uniform_stride;
     ModelUniform* model_uniform_buffer_mapped[OBJECT_COUNT];
-    VkDescriptorSet model_descriptor_sets[OBJECT_COUNT];
+    VkDescriptorSet material_descriptor_sets[MATERIAL_COUNT];
+
+    VkSampler texture_sampler;
+    Texture textures[8];
+    bool material_has_albedo[MATERIAL_COUNT];
+    bool cone_has_specular;
+    bool cone_has_emissive;
 
     VkDescriptorPool descriptor_pool;
 };
