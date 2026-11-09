@@ -635,7 +635,10 @@ namespace application {
             const uint32_t dynamic_offset = static_cast<uint32_t>(model_index) * ctx.model_uniform_stride;
             vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 ctx.pipeline_layout, 1, 1, &ctx.material_descriptor_sets[material], 1, &dynamic_offset);
-            const TextureEffect effect = { effect_time, animated_sampling ? 1u : 0u };
+            uint32_t flags = animated_sampling ? TextureEffect::ANIMATED_SAMPLING : 0u;
+            if (model_index < static_cast<int>(Context::OBJECT_CAPACITY))
+                flags |= TextureEffect::CONE_MAPPING;
+            const TextureEffect effect = { effect_time, flags };
             vkCmdPushConstants(fd.command_buffer, ctx.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                 0, sizeof(effect), &effect);
             vkCmdDrawIndexed(fd.command_buffer, index_count, 1, first_index, 0, 0);

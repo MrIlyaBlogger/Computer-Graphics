@@ -1045,12 +1045,11 @@ bool initialize(GLFWwindow* const window) {
 		constexpr float tip_fraction = 0.14f;
 		const float normal_scale = 1.0f / std::sqrt(1.25f);
 
-		// Project sideways onto local ZY. One affine UV mapping covers the whole side.
-		const auto coneU = [](float z) { return 0.5f + z * 0.5f * uv_span; };
+		// Keep V continuous from the tip to the base. The shader computes U from the angle.
 		const auto addSideVertex = [&](float x, float z, float height_fraction) {
 			addVertex(x * height_fraction, 1.0f - 2.0f * height_fraction, z * height_fraction,
 				x * normal_scale, 0.5f * normal_scale, z * normal_scale,
-				coneU(z * height_fraction), texture_inset + height_fraction * uv_span);
+				0.5f, texture_inset + height_fraction * uv_span);
 		};
 
 		// Smooth the normals near the singular tip and keep the exact slope below the ring.
@@ -1067,8 +1066,8 @@ bool initialize(GLFWwindow* const window) {
 
 		constexpr float bottom_v = 1.0f - texture_inset;
 		addVertex(0.0f, -1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.5f, 0.5f);
-		addVertex(x0, -1.0f, z0, 0.0f, -1.0f, 0.0f, coneU(z0), bottom_v);
-		addVertex(x1, -1.0f, z1, 0.0f, -1.0f, 0.0f, coneU(z1), bottom_v);
+		addVertex(x0, -1.0f, z0, 0.0f, -1.0f, 0.0f, 0.5f, bottom_v);
+		addVertex(x1, -1.0f, z1, 0.0f, -1.0f, 0.0f, 0.5f, bottom_v);
 	}
 
 	context.index_count = static_cast<uint32_t>(indices.size());

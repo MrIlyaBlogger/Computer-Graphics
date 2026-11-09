@@ -7,6 +7,8 @@ layout(location = 2) in vec3 in_normal;
 layout(location = 0) out vec2 out_uv;
 layout(location = 1) out vec3 out_world_position;
 layout(location = 2) out vec3 out_normal;
+layout(location = 3) out vec2 out_local_xz;
+layout(location = 4) flat out uint out_bottom_face;
 
 layout(std140, set = 0, binding = 0) uniform SceneUniforms {
   mat4 projection;
@@ -32,4 +34,6 @@ void main() {
   out_world_position = world_position.xyz;
   out_normal = transpose(inverse(mat3(model_uniforms.model))) * in_normal;
   out_uv = in_uv;
+  out_local_xz = in_position.xz;
+  out_bottom_face = in_normal.y < 0.0 ? 1u : 0u;
 }

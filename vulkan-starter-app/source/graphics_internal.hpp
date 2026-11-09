@@ -37,7 +37,9 @@ inline constexpr const char* material_names[] = { "Cone", "Cone alternate", "Flo
 
 struct TextureEffect {
     float time;
-    uint32_t enabled;
+    static constexpr uint32_t ANIMATED_SAMPLING = 1u << 0;
+    static constexpr uint32_t CONE_MAPPING = 1u << 1;
+    uint32_t flags;
 };
 static_assert(sizeof(TextureEffect) == 8);
 
