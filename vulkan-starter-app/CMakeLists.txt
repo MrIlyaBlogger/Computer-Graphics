@@ -87,7 +87,6 @@ target_sources(${PROJECT_NAME} PRIVATE
 	${imgui_SOURCE_DIR}/imgui_demo.cpp
 )
 
-# Compile shaders; configuration fails if the compiler is unavailable.
 find_program(GLSLC_EXECUTABLE NAMES glslc REQUIRED)
 
 set(_SHADER_BINARIES)
@@ -107,8 +106,6 @@ set(_SHADER_BINARIES)
 		list(APPEND _SHADER_BINARIES ${SHADER_BINARY_PATH})
 	endmacro()
 
-	# To compile shader file, use compile_shader function with a file name
-	# of a shader inside shaders directory. See example below:
 
 	compile_shader(shader.vert)
 	compile_shader(shader.frag)

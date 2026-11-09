@@ -120,7 +120,7 @@ namespace {
         }
     }
 
-} // namespace
+}
 
 namespace application {
 
@@ -666,4 +666,4 @@ namespace application {
         vkEndCommandBuffer(fd.command_buffer);
     }
 
-} // namespace application
+}

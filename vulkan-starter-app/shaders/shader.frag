@@ -70,7 +70,6 @@ vec3 sampleMaterialTexture(sampler2D map_texture, vec2 uv, vec2 center_uv, float
   vec2 center_dx = dFdx(center_uv);
   vec2 center_dy = dFdy(center_uv);
 
-  // atan jumps by two repeats; exclude that jump from the mip gradients.
   dx.x -= 2.0 * round(dx.x * 0.5);
   dy.x -= 2.0 * round(dy.x * 0.5);
   uv.x = fract(uv.x);
@@ -146,7 +145,6 @@ void main() {
       uv.x = abs(in_local_xz.x) > 1e-6
           ? 0.5 + atan(in_local_xz.y, -in_local_xz.x) / PI
           : 0.5 + 0.5 * sign(in_local_xz.y);
-    // The apex and the center of the cap each need a single color.
     angular_weight = in_bottom_face == 0u
         ? smoothstep(0.002, 0.13, uv.y)
         : smoothstep(0.50, 0.65, uv.y);

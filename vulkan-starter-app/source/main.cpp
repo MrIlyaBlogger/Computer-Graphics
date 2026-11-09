@@ -21,7 +21,7 @@ constexpr char default_window_title[] = "Vulkan Starter App";
 
 GLFWwindow* glfw_window;
 
-} // namespace
+}
 
 int main() {
 	int status = EXIT_SUCCESS;

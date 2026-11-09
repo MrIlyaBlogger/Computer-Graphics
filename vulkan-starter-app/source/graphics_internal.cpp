@@ -20,12 +20,12 @@
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable: 4100 4189 4324)
-#endif // _MSC_VER
+#endif
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 #ifdef _MSC_VER
 #pragma warning(pop)
-#endif // _MSC_VER
+#endif
 
 #include <backends/imgui_impl_vulkan.h>
 
@@ -428,7 +428,6 @@ bool createMaterialSets() {
 }
 
 VkFormat selectDepthFormat(VkPhysicalDevice physical_device) {
-	// Prefer the original format and preserve stencil support in the fallback.
 	const VkFormat candidates[] = {
 		VK_FORMAT_D24_UNORM_S8_UINT,
 		VK_FORMAT_D32_SFLOAT_S8_UINT,
@@ -789,7 +788,7 @@ bool rebuildSwapchain(uint32_t width, uint32_t height) {
 	return true;
 }
 
-} // namespace
+}
 
 Context context;
 
@@ -1045,14 +1044,12 @@ bool initialize(GLFWwindow* const window) {
 		constexpr float tip_fraction = 0.14f;
 		const float normal_scale = 1.0f / std::sqrt(1.25f);
 
-		// Keep V continuous from the tip to the base. The shader computes U from the angle.
 		const auto addSideVertex = [&](float x, float z, float height_fraction) {
 			addVertex(x * height_fraction, 1.0f - 2.0f * height_fraction, z * height_fraction,
 				x * normal_scale, 0.5f * normal_scale, z * normal_scale,
 				0.5f, texture_inset + height_fraction * uv_span);
 		};
 
-		// Smooth the normals near the singular tip and keep the exact slope below the ring.
 		addVertex(0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, texture_inset);
 		addSideVertex(x1, z1, tip_fraction);
 		addSideVertex(x0, z0, tip_fraction);
@@ -1119,7 +1116,6 @@ bool initialize(GLFWwindow* const window) {
 		return first_index;
 	};
 	context.floor_index_start = addRoomQuad(false, false);
-	// V starts at the top of each wall and increases downwards.
 	context.back_wall_index_start = addRoomQuad(false, true);
 	context.side_wall_index_start = addRoomQuad(true, false);
 
@@ -1680,4 +1676,4 @@ void submitAndPresent() {
 	}
 }
 
-} // namespace graphics::internal
+}
